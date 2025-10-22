@@ -1,57 +1,57 @@
-# 🎬 유튜브 썸네일 문구 생성기
+# 🎬 YouTube Thumbnail Phrase Generator
 
-AI 기반 유튜브 썸네일 문구 생성 웹 애플리케이션입니다.
+AI-powered YouTube thumbnail phrase generation web application.
 
-## ✨ 주요 기능
+## ✨ Key Features
 
-- **3단계 문구 생성**: 기본 정보 → 핵심 메시지 → 썸네일 생성
-- **AI 기반 문구 생성**: Claude API를 활용한 고품질 문구 생성
-- **키워드 강조**: 숫자, 경고, 정보 등 색상별 강조
-- **실시간 편집**: 생성된 문구를 실시간으로 수정 가능
-- **사용량 제한**: IP당 일일 20회 제한으로 비용 관리
-- **비밀번호 보안**: 가족/친구 전용 접근 제어
+- **3-Step Generation**: Basic Info → Core Message → Thumbnail Creation
+- **AI-Powered Generation**: High-quality phrase generation using Claude API
+- **Keyword Highlighting**: Color-coded emphasis for numbers, warnings, and information
+- **Real-time Editing**: Live editing of generated phrases
+- **Usage Limiting**: Daily 20 requests per IP for cost management
+- **Password Security**: Family/friends only access control
 
-## 🚀 배포 방법
+## 🚀 Deployment
 
-### Vercel 배포
+### Vercel Deployment
 
-1. **GitHub 저장소 연결**
-   - Vercel.com에서 GitHub 저장소 import
-   - 자동 배포 설정
+1. **Connect GitHub Repository**
+   - Import GitHub repository at Vercel.com
+   - Set up automatic deployment
 
-2. **환경변수 설정**
+2. **Environment Variables Setup**
    ```
    CLAUDE_API_KEY=your-claude-api-key-here
    ACCESS_PASSWORD=your-secure-password
    ```
 
-3. **배포 완료**
-   - Vercel에서 제공하는 URL로 접속
-   - 비밀번호 입력 후 사용
+3. **Deployment Complete**
+   - Access the URL provided by Vercel
+   - Enter password to use the service
 
-## 🛠️ 로컬 개발
+## 🛠️ Local Development
 
 ```bash
-# 의존성 설치
+# Install dependencies
 npm install
 
-# 환경변수 설정
+# Set up environment variables
 cp env.example .env
-# .env 파일에서 API 키와 비밀번호 설정
+# Configure API key and password in .env file
 
-# 서버 실행
+# Start server
 npm start
 ```
 
-## 📋 사용 방법
+## 📋 Usage
 
-1. **비밀번호 입력**: 가족/친구 전용 비밀번호 입력
-2. **기본 정보 입력**: 영상 주제, 타겟층, 성별 등
-3. **핵심 메시지 설정**: 충격 포인트, 권위 요소 등
-4. **문구 생성**: AI가 5개의 썸네일 문구 생성
-5. **편집 및 수정**: 생성된 문구를 실시간으로 편집
+1. **Enter Password**: Input family/friends access password
+2. **Basic Information**: Video topic, target audience, gender, etc.
+3. **Core Message Setup**: Shock points, authority elements, etc.
+4. **Generate Phrases**: AI creates 5 thumbnail phrases
+5. **Edit and Modify**: Real-time editing of generated phrases
 
-## 🔧 기술 스택
+## 🔧 Tech Stack
 
 - **Frontend**: HTML, CSS, JavaScript
 - **Backend**: Node.js, Express
@@ -59,21 +59,21 @@ npm start
 - **Deployment**: Vercel
 - **Styling**: CSS3, Flexbox, Grid
 
-## 📊 사용량 관리
+## 📊 Usage Management
 
-- **일일 제한**: IP당 20회
-- **자동 초기화**: 매일 자정
-- **실시간 표시**: 헤더에서 사용량 확인
+- **Daily Limit**: 20 requests per IP
+- **Auto Reset**: Every midnight
+- **Real-time Display**: Usage shown in header
 
-## 🔐 보안
+## 🔐 Security
 
-- **비밀번호 인증**: 접근 제어
-- **IP 기반 제한**: 사용량 관리
-- **API 키 보호**: 서버사이드 처리
+- **Password Authentication**: Access control
+- **IP-based Limiting**: Usage management
+- **API Key Protection**: Server-side processing
 
-## 📝 라이선스
+## 📝 License
 
-개인/가족 사용 목적으로 제작되었습니다.
+Created for personal/family use.
 
 ---
 
