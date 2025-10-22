@@ -35,7 +35,7 @@ const dailyUsage = new Map();
 const ACCESS_PASSWORD = process.env.ACCESS_PASSWORD || 'family2024';
 
 // 일일 사용량 제한
-const DAILY_LIMIT = 20;
+const DAILY_LIMIT = 100;
 
 // 사용량 초기화 함수 (매일 자정)
 function resetDailyUsage() {

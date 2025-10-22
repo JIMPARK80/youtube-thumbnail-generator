@@ -8,7 +8,7 @@ AI-powered YouTube thumbnail phrase generation web application.
 - **AI-Powered Generation**: High-quality phrase generation using Claude API
 - **Keyword Highlighting**: Color-coded emphasis for numbers, warnings, and information
 - **Real-time Editing**: Live editing of generated phrases
-- **Usage Limiting**: Daily 20 requests per IP for cost management
+- **Usage Limiting**: Daily 100 requests per IP for cost management
 - **Password Security**: Family/friends only access control
 
 ## 🚀 Deployment
@@ -61,7 +61,7 @@ npm start
 
 ## 📊 Usage Management
 
-- **Daily Limit**: 20 requests per IP
+- **Daily Limit**: 100 requests per IP
 - **Auto Reset**: Every midnight
 - **Real-time Display**: Usage shown in header
 

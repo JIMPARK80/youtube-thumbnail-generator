@@ -1,7 +1,7 @@
 // Step Navigation
 let currentStep = 1;
 let userPassword = '';
-let usageInfo = { current: 0, limit: 20, remaining: 20 };
+let usageInfo = { current: 0, limit: 100, remaining: 100 };
 
 // 비밀번호 인증 함수 (성능 최적화)
 function checkPassword() {
