@@ -3,9 +3,11 @@ let currentStep = 1;
 let userPassword = '';
 let usageInfo = { current: 0, limit: 20, remaining: 20 };
 
-// 비밀번호 인증 함수
+// 비밀번호 인증 함수 (성능 최적화)
 function checkPassword() {
-    const password = document.getElementById('passwordInput').value.trim();
+    const passwordInput = document.getElementById('passwordInput');
+    const password = passwordInput.value.trim();
+    
     if (!password) {
         showPasswordError('비밀번호를 입력해주세요.');
         return;
@@ -13,7 +15,11 @@ function checkPassword() {
     
     userPassword = password;
     hidePasswordModal();
-    loadUsageInfo();
+    
+    // 비동기로 사용량 정보 로드 (UI 블로킹 방지)
+    setTimeout(() => {
+        loadUsageInfo();
+    }, 100);
 }
 
 // 비밀번호 모달 숨기기
@@ -29,16 +35,30 @@ function showPasswordError(message) {
     errorEl.style.display = 'block';
 }
 
-// 사용량 정보 로드
+// 사용량 정보 로드 (성능 최적화)
 async function loadUsageInfo() {
     try {
-        const response = await fetch('/api/usage');
+        // 요청 타임아웃 설정 (5초)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        
+        const response = await fetch('/api/usage', {
+            signal: controller.signal,
+            cache: 'no-cache' // 캐시 방지
+        });
+        
+        clearTimeout(timeoutId);
+        
         if (response.ok) {
             usageInfo = await response.json();
             updateUsageDisplay();
         }
     } catch (error) {
-        console.error('사용량 정보 로드 실패:', error);
+        if (error.name === 'AbortError') {
+            console.warn('사용량 정보 로드 타임아웃');
+        } else {
+            console.error('사용량 정보 로드 실패:', error);
+        }
     }
 }
 

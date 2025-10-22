@@ -21,6 +21,12 @@ body {
 
 /* Mobile Responsive Design */
 @media (max-width: 768px) {
+    /* 성능 최적화 - 애니메이션 제거 */
+    * {
+        animation: none !important;
+        transition: none !important;
+    }
+    
     .app-container {
         padding: 10px;
     }
@@ -33,6 +39,7 @@ body {
     .content-card {
         padding: 15px;
         margin: 10px 0;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1); /* 간소화된 그림자 */
     }
     
     .step-indicator {
@@ -54,6 +61,7 @@ body {
         font-size: 0.9rem;
         min-height: 44px; /* 터치 최적화 */
         touch-action: manipulation;
+        will-change: auto; /* 성능 최적화 */
     }
     
     .checkbox-group {
@@ -64,6 +72,7 @@ body {
     .phrase-item {
         margin-bottom: 15px;
         padding: 0;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1); /* 간소화된 그림자 */
     }
     
     .phrase-header {

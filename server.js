@@ -10,14 +10,18 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// Serve static files with explicit routes
+// Serve static files with explicit routes and caching
 app.get('/styles.css', (req, res) => {
     res.setHeader('Content-Type', 'text/css');
+    res.setHeader('Cache-Control', 'public, max-age=3600'); // 1시간 캐시
+    res.setHeader('ETag', '"styles-v1"');
     res.sendFile(path.join(__dirname, 'styles.css'));
 });
 
 app.get('/script.js', (req, res) => {
     res.setHeader('Content-Type', 'application/javascript');
+    res.setHeader('Cache-Control', 'public, max-age=3600'); // 1시간 캐시
+    res.setHeader('ETag', '"script-v1"');
     res.sendFile(path.join(__dirname, 'script.js'));
 });
 
