@@ -9,12 +9,102 @@ body {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     min-height: 100vh;
     color: #333;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 .app-container {
     max-width: 1200px;
     margin: 0 auto;
     padding: 20px;
+}
+
+/* Mobile Responsive Design */
+@media (max-width: 768px) {
+    .app-container {
+        padding: 10px;
+    }
+    
+    .app-header h1 {
+        font-size: 1.5rem;
+        text-align: center;
+    }
+    
+    .content-card {
+        padding: 15px;
+        margin: 10px 0;
+    }
+    
+    .step-indicator {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .step {
+        width: 100%;
+        text-align: center;
+    }
+    
+    .form-group {
+        margin-bottom: 15px;
+    }
+    
+    .target-btn, .gender-btn {
+        padding: 12px 20px;
+        font-size: 0.9rem;
+        min-height: 44px; /* 터치 최적화 */
+        touch-action: manipulation;
+    }
+    
+    .checkbox-group {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .phrase-item {
+        margin-bottom: 15px;
+        padding: 0;
+    }
+    
+    .phrase-header {
+        padding: 10px 15px;
+    }
+    
+    .phrase-text {
+        padding: 15px;
+    }
+    
+    .phrase-actions {
+        padding: 10px 15px;
+    }
+    
+    .usage-info {
+        flex-direction: column;
+        gap: 10px;
+        text-align: center;
+    }
+    
+    .modal-content {
+        width: 95%;
+        padding: 20px;
+    }
+    
+    .password-toggle-btn {
+        font-size: 1.4rem;
+        padding: 8px;
+        min-width: 44px; /* 터치 최적화 */
+        min-height: 44px;
+    }
+    
+    /* 터치 최적화 */
+    button, input, select, textarea {
+        -webkit-appearance: none;
+        border-radius: 0;
+    }
+    
+    input, textarea {
+        font-size: 16px; /* iOS 줌 방지 */
+    }
 }
 
 .app-header {
@@ -364,19 +454,45 @@ body {
     line-height: 1.5;
 }
 
+.password-input-container {
+    position: relative;
+    margin-bottom: 20px;
+}
+
 .modal-content input {
     width: 100%;
-    padding: 12px 15px;
+    padding: 12px 50px 12px 15px;
     border: 2px solid #e9ecef;
     border-radius: 8px;
     font-size: 1rem;
-    margin-bottom: 20px;
     box-sizing: border-box;
 }
 
 .modal-content input:focus {
     outline: none;
     border-color: #007bff;
+}
+
+.password-toggle-btn {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 5px;
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
+}
+
+.password-toggle-btn:hover {
+    background-color: #f8f9fa;
+}
+
+.password-toggle-btn:active {
+    background-color: #e9ecef;
 }
 
 .modal-buttons {

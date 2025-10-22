@@ -88,6 +88,20 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     
+    // 비밀번호 표시/숨기기 토글
+    document.getElementById('togglePassword').addEventListener('click', function() {
+        const passwordInput = document.getElementById('passwordInput');
+        const toggleBtn = document.getElementById('togglePassword');
+        
+        if (passwordInput.type === 'password') {
+            passwordInput.type = 'text';
+            toggleBtn.textContent = '🙈';
+        } else {
+            passwordInput.type = 'password';
+            toggleBtn.textContent = '👁️';
+        }
+    });
+    
     const targetBtns = document.querySelectorAll('.target-btn');
     targetBtns.forEach(btn => {
         btn.addEventListener('click', () => {
