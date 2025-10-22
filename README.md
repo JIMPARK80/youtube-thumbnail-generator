@@ -21,8 +21,8 @@ AI 기반 유튜브 썸네일 문구 생성 웹 애플리케이션입니다.
 
 2. **환경변수 설정**
    ```
-   CLAUDE_API_KEY=sk-ant-api03-... (Claude API 키)
-   ACCESS_PASSWORD=family2024 (접근 비밀번호)
+   CLAUDE_API_KEY=your-claude-api-key-here
+   ACCESS_PASSWORD=your-secure-password
    ```
 
 3. **배포 완료**
