@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>유튜브 썸네일 문구 생성기</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <header class="app-header">
+            <h1>유튜브 썸네일 문구 생성기</h1>
+            <div class="usage-info" id="usageInfo" style="display: none;">
+                <span class="usage-text">오늘 사용량: <span id="usageCount">0</span>/20</span>
+                <span class="usage-remaining">남은 횟수: <span id="remainingCount">20</span></span>
+            </div>
+        </header>
+
+        <div class="step-indicator">
+            <div class="step active" data-step="1">
+                <span class="step-number">1</span>
+                <span class="step-label">기본 정보</span>
+            </div>
+            <div class="step" data-step="2">
+                <span class="step-number">2</span>
+                <span class="step-label">핵심 메시지</span>
+            </div>
+            <div class="step" data-step="3">
+                <span class="step-number">3</span>
+                <span class="step-label">썸네일 생성</span>
+            </div>
+        </div>
+
+        <main class="main-content">
+            <!-- Step 1: Basic Information -->
+            <div class="step-content active" id="step1">
+                <div class="content-card">
+                    <h2>1단계: 기본 정보</h2>
+                    
+                    <div class="form-group">
+                        <label for="videoTopic">영상 주제</label>
+                        <input type="text" id="videoTopic" placeholder="ex: 50대 이후, 진짜 친구는 몇 명일까?">
+                    </div>
+
+                    <div class="form-group">
+                        <label>타겟층</label>
+                        <div class="button-group">
+                            <button class="target-btn active" data-target="senior">
+                                <div class="btn-text">시니어 (50대 이상)</div>
+                                <div class="btn-subtitle">건강, 질병예방 관련</div>
+                            </button>
+                            <button class="target-btn" data-target="worker">
+                                <div class="btn-text">2030 직장인</div>
+                                <div class="btn-subtitle">부업, 스트레스 관련</div>
+                            </button>
+                            <button class="target-btn" data-target="housewife">
+                                <div class="btn-text">주부</div>
+                                <div class="btn-subtitle">가정, 육아, 살림</div>
+                            </button>
+                            <button class="target-btn" data-target="all">
+                                <div class="btn-text">전체</div>
+                                <div class="btn-subtitle">폭넓은 주제</div>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>성별</label>
+                        <div class="button-group">
+                            <button class="gender-btn" data-gender="male">남성</button>
+                            <button class="gender-btn" data-gender="female">여성</button>
+                            <button class="gender-btn active" data-gender="both">남녀 모두</button>
+                        </div>
+                    </div>
+
+                    <button class="next-btn" onclick="goToNextStep()">다음</button>
+                </div>
+            </div>
+
+            <!-- Step 2: Core Message -->
+            <div class="step-content" id="step2">
+                <div class="content-card">
+                    <h2>2단계: 핵심 메시지</h2>
+                    
+                    <div class="form-group">
+                        <label for="shockPoint">충격 포인트/결과</label>
+                        <input type="text" id="shockPoint" placeholder="충격적인 포인트나 결과를 입력하세요" value="커피 한 잔/암 발병률 300% 증가">
+                        <div class="checkbox-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="shockCheck" checked>
+                                <span class="checkmark"></span>
+                                충격 포인트 공략 (충격/반전 3개 이상 5개까지 등)
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="synopsis">영상 시놉시스 (선택)</label>
+                        <textarea id="synopsis" placeholder="영상 내용을 간략히 설명해주세요">우리 집에도 이거 다 있었어. 아침에 커피 한 잔, 점심엔 주스나 식혜, 저녁엔 따뜻한 차 한 잔 그런데 혹시 아세요? 이 흔한 음료들이 암세포에게는 '에너지 드링크'라는 사실을요.</textarea>
+                        <input type="text" id="additionalInfo" placeholder="추가 정보" value="">
+                        <div class="checkbox-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="contentCheck" checked>
+                                <span class="checkmark"></span>
+                                충분한 내용으로 적을수록 추가되는 흥미가 비취되면 프롬프트에서 설정됩니다
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="authority">권위 요소 (선택)</label>
+                        <select id="authority">
+                            <option value="서울대병원 암센터 연구팀">서울대병원 암센터 연구팀</option>
+                            <option value="한국식품연구원">한국식품연구원</option>
+                            <option value="질병관리청">질병관리청</option>
+                            <option value="세계보건기구">세계보건기구</option>
+                            <option value="직접입력">직접입력</option>
+                        </select>
+                        <input type="text" id="customAuthority" placeholder="권위 요소를 직접 입력하세요" style="display: none; margin-top: 10px;">
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="phraseCount">생성할 문구 개수</label>
+                            <select id="phraseCount">
+                                <option value="3">3개</option>
+                                <option value="5" selected>5개</option>
+                                <option value="7">7개</option>
+                                <option value="10">10개</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="maxLength">문구 최대 길이</label>
+                            <select id="maxLength">
+                                <option value="15">15자</option>
+                                <option value="20" selected>20자</option>
+                                <option value="25">25자</option>
+                                <option value="30">30자</option>
+                                <option value="직접입력">직접입력</option>
+                            </select>
+                            <input type="number" id="customMaxLength" placeholder="문구 길이를 직접 입력하세요" min="5" max="100" style="display: none; margin-top: 10px;">
+                        </div>
+                    </div>
+
+                    <div class="button-group">
+                        <button class="prev-btn" onclick="goToStep(1)">이전</button>
+                        <button class="generate-btn" onclick="generatePhrases()">AI 생성 중...</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 3: Generated Phrases -->
+            <div class="step-content" id="step3">
+                <div class="content-card">
+                    <h2>생성된 썸네일 문구</h2>
+                    
+                    <div class="phrases-container" id="phrasesContainer">
+                        <!-- Generated phrases will be inserted here -->
+                    </div>
+
+                    <div class="button-group">
+                        <button class="prev-btn" onclick="goToStep(2)">이전</button>
+                        <button class="regenerate-btn" onclick="generatePhrases()">새로 만들기</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- 비밀번호 입력 모달 -->
+    <div id="passwordModal" class="modal">
+        <div class="modal-content">
+            <h2>🔐 접근 비밀번호</h2>
+            <p>가족/친구 전용 서비스입니다. 비밀번호를 입력해주세요.</p>
+            <input type="password" id="passwordInput" placeholder="비밀번호를 입력하세요" />
+            <div class="modal-buttons">
+                <button id="passwordSubmit" class="btn-primary">접속하기</button>
+            </div>
+            <div id="passwordError" class="error-message" style="display: none;"></div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
