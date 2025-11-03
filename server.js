@@ -13,15 +13,15 @@ app.use(express.json());
 // Serve static files with explicit routes and caching
 app.get('/styles.css', (req, res) => {
     res.setHeader('Content-Type', 'text/css');
-    res.setHeader('Cache-Control', 'public, max-age=3600'); // 1시간 캐시
-    res.setHeader('ETag', '"styles-v1"');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate'); // 캐시 방지
+    res.setHeader('ETag', '"styles-v2"'); // 버전 업데이트
     res.sendFile(path.join(__dirname, 'styles.css'));
 });
 
 app.get('/script.js', (req, res) => {
     res.setHeader('Content-Type', 'application/javascript');
-    res.setHeader('Cache-Control', 'public, max-age=3600'); // 1시간 캐시
-    res.setHeader('ETag', '"script-v1"');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate'); // 캐시 방지
+    res.setHeader('ETag', '"script-v2"'); // 버전 업데이트
     res.sendFile(path.join(__dirname, 'script.js'));
 });
 
@@ -29,21 +29,24 @@ app.get('/script.js', (req, res) => {
 app.use(express.static('.'));
 
 // Map for tracking usage
-const dailyUsage = new Map();
+const dailyUsage = new Map(); // For authenticated users (token-based)
+const freeUsage = new Map(); // For free users (IP-based)
 
 // Password setting (environment variable or default value)
 const ACCESS_PASSWORD = process.env.ACCESS_PASSWORD || 'family2024';
 
-// Daily usage limit
-const DAILY_LIMIT = 100;
+// Usage limits
+const FREE_LIMIT = 3; // Free usage limit for everyone
+const PREMIUM_LIMIT = 100; // Premium usage limit after login
 
-// Usage reset function (daily at midnight)
+// Usage reset function (daily at midnight) - only for premium users
 function resetDailyUsage() {
-    dailyUsage.clear();
-    console.log('📊 Daily usage has been reset.');
+    dailyUsage.clear(); // Only reset premium usage (daily)
+    // freeUsage is NOT reset - it's lifetime based
+    console.log('📊 Premium daily usage has been reset.');
 }
 
-// Reset usage daily at midnight
+// Reset premium usage daily at midnight (free usage is lifetime, not reset)
 setInterval(() => {
     const now = new Date();
     if (now.getHours() === 0 && now.getMinutes() === 0) {
@@ -86,6 +89,20 @@ async function callClaudeAPI(prompt) {
     const data = await response.json();
     const content = data.content[0].text;
     
+    // Extract requested number of phrases from prompt
+    // Look for patterns like "Generate 3 completely independent" or "Number of phrases to generate: 3"
+    let requestedCount = 3; // Default
+    const generateMatch = prompt.match(/Generate\s+(\d+)\s+completely\s+independent/i);
+    if (generateMatch && generateMatch[1]) {
+        requestedCount = parseInt(generateMatch[1]) || 3;
+    } else {
+        // Try alternative pattern: "Number of phrases to generate: X"
+        const countMatch = prompt.match(/Number of phrases to generate:\s*(\d+)/i);
+        if (countMatch && countMatch[1]) {
+            requestedCount = parseInt(countMatch[1]) || 3;
+        }
+    }
+    
     // Parse the response to extract phrases
     let phrases = content.split('\n\n').filter(phrase => phrase.trim().length > 0);
     
@@ -99,29 +116,54 @@ async function callClaudeAPI(prompt) {
         return cleaned.trim();
     }).filter(phrase => phrase.length > 0); // Remove empty phrases after cleaning
     
-    return phrases;
+    // Return only the requested number of phrases
+    return phrases.slice(0, requestedCount);
 }
 
-// Usage check function
-function checkUsageLimit(clientIP) {
+// Usage check function for authenticated users
+function checkUsageLimit(token) {
     const today = new Date().toDateString();
-    const key = `${clientIP}-${today}`;
+    const key = `token-${token}-${today}`;
     const currentUsage = dailyUsage.get(key) || 0;
     
     return {
         current: currentUsage,
-        limit: DAILY_LIMIT,
-        remaining: Math.max(0, DAILY_LIMIT - currentUsage),
-        exceeded: currentUsage >= DAILY_LIMIT
+        limit: PREMIUM_LIMIT,
+        remaining: Math.max(0, PREMIUM_LIMIT - currentUsage),
+        exceeded: currentUsage >= PREMIUM_LIMIT,
+        type: 'premium'
     };
 }
 
-// Usage increment function
-function incrementUsage(clientIP) {
+// Usage check function for free users (IP-based, lifetime limit, not daily)
+function checkFreeUsageLimit(clientIP) {
+    // IP 기반으로 평생 3회만 사용 가능 (일자와 무관)
+    const key = `free-${clientIP}`;
+    const currentUsage = freeUsage.get(key) || 0;
+    
+    return {
+        current: currentUsage,
+        limit: FREE_LIMIT,
+        remaining: Math.max(0, FREE_LIMIT - currentUsage),
+        exceeded: currentUsage >= FREE_LIMIT,
+        type: 'free'
+    };
+}
+
+// Usage increment function for authenticated users
+function incrementUsage(token) {
     const today = new Date().toDateString();
-    const key = `${clientIP}-${today}`;
+    const key = `token-${token}-${today}`;
     const currentUsage = dailyUsage.get(key) || 0;
     dailyUsage.set(key, currentUsage + 1);
+}
+
+// Usage increment function for free users (IP-based, lifetime)
+function incrementFreeUsage(clientIP) {
+    // IP 기반으로 평생 3회만 사용 가능 (일자와 무관)
+    const key = `free-${clientIP}`;
+    const currentUsage = freeUsage.get(key) || 0;
+    freeUsage.set(key, currentUsage + 1);
 }
 
 // Store active session tokens (in production, use Redis or similar)
@@ -130,52 +172,51 @@ const activeTokens = new Set();
 // API 엔드포인트
 app.post('/api/generate-phrases', async (req, res) => {
     try {
-        const { prompt, token, password } = req.body;
+        const { prompt, token } = req.body;
         const clientIP = req.ip || req.connection.remoteAddress;
-        
-        // Verify token or password
-        if (token) {
-            // Token-based authentication (from login)
-            if (!activeTokens.has(token)) {
-                return res.status(401).json({ 
-                    error: 'Invalid or expired session token.',
-                    code: 'INVALID_SESSION'
-                });
-            }
-        } else if (password) {
-            // Password-based authentication (legacy)
-            if (password !== ACCESS_PASSWORD) {
-                return res.status(401).json({ 
-                    error: 'Incorrect password.',
-                    code: 'INVALID_PASSWORD'
-                });
-            }
-        } else {
-            return res.status(401).json({ 
-                error: 'Authentication required. Please provide token or password.',
-                code: 'AUTH_REQUIRED'
-            });
-        }
-        
-        // Usage check
-        const usage = checkUsageLimit(clientIP);
-        if (usage.exceeded) {
-            return res.status(429).json({ 
-                error: 'Daily usage limit exceeded.',
-                code: 'USAGE_EXCEEDED',
-                usage: usage
-            });
-        }
         
         if (!prompt) {
             return res.status(400).json({ error: 'Prompt is required.' });
         }
         
-        console.log(`Calling Claude API... (IP: ${clientIP}, Usage: ${usage.current + 1}/${DAILY_LIMIT})`);
+        let usage;
+        let isAuthenticated = false;
+        
+        // Check if user is authenticated (has valid token)
+        if (token && activeTokens.has(token)) {
+            isAuthenticated = true;
+            // Authenticated user - check premium usage limit (100)
+            usage = checkUsageLimit(token);
+            if (usage.exceeded) {
+                return res.status(429).json({ 
+                    error: 'Today\'s usage limit has been reached. Please contact Jim Park Digital Studio to continue.',
+                    code: 'PREMIUM_USAGE_EXCEEDED',
+                    usage: usage
+                });
+            }
+        } else {
+            // Free user - check free usage limit (3)
+            usage = checkFreeUsageLimit(clientIP);
+            if (usage.exceeded) {
+                return res.status(429).json({ 
+                    error: 'Free usage completed. Please enter password to continue.',
+                    code: 'FREE_USAGE_EXCEEDED',
+                    usage: usage
+                });
+            }
+        }
+        
+        console.log(`Calling Claude API... (IP: ${clientIP}, Authenticated: ${isAuthenticated}, Usage: ${usage.current + 1}/${usage.limit})`);
         const phrases = await callClaudeAPI(prompt);
         
-        // Increment usage
-        incrementUsage(clientIP);
+        // Increment usage based on authentication status
+        if (isAuthenticated) {
+            incrementUsage(token);
+            usage = checkUsageLimit(token); // Refresh usage after increment
+        } else {
+            incrementFreeUsage(clientIP);
+            usage = checkFreeUsageLimit(clientIP); // Refresh usage after increment
+        }
         
         console.log('Generated phrases:', phrases);
         
@@ -183,7 +224,7 @@ app.post('/api/generate-phrases', async (req, res) => {
             success: true, 
             phrases: phrases,
             count: phrases.length,
-            usage: checkUsageLimit(clientIP)
+            usage: usage
         });
         
     } catch (error) {
@@ -239,7 +280,17 @@ app.post('/api/login', (req, res) => {
 // Usage check API
 app.get('/api/usage', (req, res) => {
     const clientIP = req.ip || req.connection.remoteAddress;
-    const usage = checkUsageLimit(clientIP);
+    const token = req.headers['x-session-token'] || req.query.token || '';
+    
+    let usage;
+    if (token && activeTokens.has(token)) {
+        // Authenticated user
+        usage = checkUsageLimit(token);
+    } else {
+        // Free user
+        usage = checkFreeUsageLimit(clientIP);
+    }
+    
     res.json(usage);
 });
 

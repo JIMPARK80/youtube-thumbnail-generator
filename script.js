@@ -1,7 +1,7 @@
 // Step Navigation
 let currentStep = 1;
 let sessionToken = sessionStorage.getItem('sessionToken') || ''; // Session token (used instead of password)
-let usageInfo = { current: 0, limit: 100, remaining: 100 };
+let usageInfo = { current: 0, limit: 3, remaining: 3, type: 'free' }; // Default to free usage
 
 // Password authentication function (session token method)
 async function checkPassword() {
@@ -40,6 +40,7 @@ async function checkPassword() {
         hidePasswordModal();
         
         // Load usage info asynchronously (prevent UI blocking)
+        // This will now load premium usage (100)
         setTimeout(() => {
             loadUsageInfo();
         }, 100);
@@ -62,6 +63,29 @@ function showPasswordError(message) {
     errorEl.style.display = 'block';
 }
 
+// Show password modal when free usage is exhausted
+function showPasswordModalForFreeLimit() {
+    const modal = document.getElementById('passwordModal');
+    const modalTitle = modal.querySelector('h2');
+    const modalText = modal.querySelector('p');
+    
+    if (modalTitle) {
+        modalTitle.textContent = '🔐 Free Usage Completed';
+    }
+    if (modalText) {
+        modalText.textContent = `You have used all 3 free generations.
+        Please enter password to continue (100 daily generations for subscribers/friends).`;
+        
+    }
+    
+    modal.style.display = 'flex';
+}
+
+// Show premium limit message
+function showPremiumLimitMessage() {
+    alert('Today\'s usage limit has been reached. Please contact Jim Park Digital Studio to continue.');
+}
+
 // Load usage info (performance optimized)
 async function loadUsageInfo() {
     try {
@@ -69,15 +93,30 @@ async function loadUsageInfo() {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000);
         
-        const response = await fetch('/api/usage', {
+        const headers = {};
+        if (sessionToken) {
+            headers['x-session-token'] = sessionToken;
+        }
+        
+        const response = await fetch(`/api/usage?token=${sessionToken || ''}`, {
             signal: controller.signal,
-            cache: 'no-cache' // Prevent caching
+            cache: 'no-cache', // Prevent caching
+            headers: headers
         });
         
         clearTimeout(timeoutId);
         
         if (response.ok) {
-            usageInfo = await response.json();
+            const serverUsage = await response.json();
+            // Ensure usage info has correct structure
+            usageInfo = {
+                current: serverUsage.current || 0,
+                limit: serverUsage.limit || (serverUsage.type === 'premium' ? 100 : 3),
+                remaining: serverUsage.remaining || 0,
+                exceeded: serverUsage.exceeded || false,
+                type: serverUsage.type || 'free'
+            };
+            console.log('Usage info loaded:', usageInfo); // Debug log
             updateUsageDisplay();
         }
     } catch (error) {
@@ -96,6 +135,15 @@ function updateUsageDisplay() {
     const usageTextEl = document.querySelector('.usage-text');
     const remainingTextEl = document.querySelector('.usage-remaining');
     
+    const usageType = usageInfo.type || 'free';
+    // Use server's limit value, with fallback based on type
+    let limit = usageInfo.limit;
+    if (!limit || limit <= 0) {
+        limit = (usageType === 'premium' ? 100 : 3);
+    }
+    // Set prefix based on usage type (no "Today's" - free is lifetime, premium is daily)
+    const prefix = usageType === 'premium' ? 'Premium (Password required): ' : 'Free: ';
+    
     if (usageCountEl) {
         usageCountEl.textContent = usageInfo.current;
     }
@@ -103,19 +151,21 @@ function updateUsageDisplay() {
         remainingCountEl.textContent = usageInfo.remaining;
     }
     
-    // Apply translated text (if t() function is defined)
-    if (typeof t === 'function') {
-        if (usageTextEl) {
-            usageTextEl.innerHTML = t('usageCount') + ': <span id="usageCount">' + usageInfo.current + '</span>/100';
-        }
-        if (remainingTextEl) {
-            remainingTextEl.innerHTML = t('remainingText') + ': <span id="remainingCount">' + usageInfo.remaining + '</span>';
-        }
+    // Update usage text with type prefix (NO "Today's" text)
+    if (usageTextEl) {
+        // Clear any existing text first
+        usageTextEl.textContent = '';
+        // Set new content without "Today's"
+        usageTextEl.innerHTML = `${prefix}<span id="usageCount">${usageInfo.current}</span>/${limit}`;
+    }
+    if (remainingTextEl) {
+        remainingTextEl.innerHTML = `Remaining: <span id="remainingCount">${usageInfo.remaining}</span>`;
     }
     
     // Warning color if usage is high
     if (remainingTextEl) {
-        if (usageInfo.remaining <= 3) {
+        const warningThreshold = usageType === 'premium' ? 10 : 1;
+        if (usageInfo.remaining <= warningThreshold) {
             remainingTextEl.style.background = 'rgba(220, 53, 69, 0.2)';
             remainingTextEl.style.borderColor = '#dc3545';
         } else {
@@ -144,13 +194,15 @@ function goToStep(step) {
 
 // Target audience selection
 document.addEventListener('DOMContentLoaded', () => {
-    // Use stored session token if available, otherwise show modal
+    // Don't show password modal on initial load - allow free usage first
+    // Only show modal when free usage is exhausted
     if (sessionToken) {
         hidePasswordModal();
         loadUsageInfo();
     } else {
-        // Show password modal
-        document.getElementById('passwordModal').style.display = 'flex';
+        // Hide password modal initially, allow free usage
+        hidePasswordModal();
+        loadUsageInfo();
     }
     
     // Password input events
@@ -322,17 +374,9 @@ document.addEventListener('DOMContentLoaded', () => {
 // AI Phrase Generation with Claude API
 async function generatePhrases() {
     // Check session token (get from sessionStorage if not available)
+    // Note: Session token is optional - free users can use API without token
     if (!sessionToken) {
         sessionToken = sessionStorage.getItem('sessionToken') || '';
-    }
-    
-    // Use sample phrases if no session token (don't show password modal)
-    if (!sessionToken) {
-        console.log('No session token. Using sample phrases.');
-        const fallbackPhrases = generateSamplePhrases();
-        displayPhrases(fallbackPhrases);
-        goToStep(3);
-        return;
     }
     
     const generateBtn = document.querySelector('.generate-btn') || document.querySelector('.regenerate-btn');
@@ -358,13 +402,17 @@ async function generatePhrases() {
             // Handle API call errors
             console.error('API call error:', apiError);
             
-            // Replace with sample phrases for session expired or password errors
-            if (apiError.message === 'INVALID_SESSION' || apiError.message === 'INVALID_PASSWORD') {
-                console.log('Authentication issue. Using sample phrases.');
-                phrases = generateSamplePhrases();
-            } else if (apiError.message === 'USAGE_EXCEEDED') {
-                // Usage exceeded is already shown in alert
+            // Handle usage exceeded errors - don't show sample phrases, show appropriate modal
+            if (apiError.message === 'FREE_USAGE_EXCEEDED' || apiError.message === 'PREMIUM_USAGE_EXCEEDED' || apiError.message === 'USAGE_EXCEEDED') {
+                // Usage exceeded - already handled in callClaudeAPI (shows modal or alert)
                 return;
+            } else if (apiError.message === 'INVALID_SESSION') {
+                // Session expired - clear token and try as free user
+                sessionStorage.removeItem('sessionToken');
+                sessionToken = '';
+                console.log('Session expired. Retrying as free user.');
+                // Retry without token (will use free usage)
+                phrases = await callClaudeAPI(prompt);
             } else {
                 // Re-throw other errors (handled in upper catch)
                 throw apiError;
@@ -389,20 +437,18 @@ async function generatePhrases() {
         console.error('AI generation failed:', error);
         console.error('Error details:', error.stack);
         
-        // Replace certain errors with sample phrases
-        if (error.message === 'INVALID_SESSION' || error.message === 'INVALID_PASSWORD') {
-            // Replace session expired or password errors with sample phrases (don't show password modal)
-            console.log('Authentication issue. Using sample phrases.');
-            const fallbackPhrases = generateSamplePhrases();
-            displayPhrases(fallbackPhrases);
-            goToStep(3);
-            return;
+        // Handle authentication errors
+        if (error.message === 'INVALID_SESSION') {
+            // Session expired - clear token and try as free user
+            sessionStorage.removeItem('sessionToken');
+            sessionToken = '';
+            // Don't show password modal, just retry (will use free usage)
+            console.log('Session expired. Continuing as free user.');
+            // Continue to sample phrases fallback
         }
         
-        if (error.message === 'USAGE_EXCEEDED') {
-            // Usage exceeded is already shown in alert
-            const usageMsg = (typeof t === 'function') ? t('usageExceeded') : 'Daily usage limit exceeded. Please try again tomorrow.';
-            alert(usageMsg);
+        if (error.message === 'USAGE_EXCEEDED' || error.message === 'FREE_USAGE_EXCEEDED' || error.message === 'PREMIUM_USAGE_EXCEEDED') {
+            // Usage exceeded - already handled (password modal or alert shown)
             return;
         }
         
@@ -662,18 +708,13 @@ After retirement, learning 'new connection skills' for the first time` :
 
 // Call Claude API (using server-side proxy)
 async function callClaudeAPI(prompt) {
-    // Check session token
+    // Check session token (optional - free users don't need token)
     if (!sessionToken) {
         sessionToken = sessionStorage.getItem('sessionToken') || '';
     }
     
-    // Error if no session token (replaced with sample phrases in upper handler)
-    if (!sessionToken) {
-        throw new Error('INVALID_SESSION');
-    }
-    
     try {
-        // Option 1: 서버 사이드 프록시 사용 (권장)
+        // Call API with or without token (free users can call without token)
         const response = await fetch('/api/generate-phrases', {
             method: 'POST',
             headers: {
@@ -681,7 +722,7 @@ async function callClaudeAPI(prompt) {
             },
             body: JSON.stringify({ 
                 prompt: prompt,
-                token: sessionToken
+                token: sessionToken || null
             })
         });
         
@@ -694,15 +735,26 @@ async function callClaudeAPI(prompt) {
             }
             
             if (response.status === 401) {
-                // Session expired - delete token and throw error (don't show password modal)
+                // Session expired - delete token
                 sessionStorage.removeItem('sessionToken');
                 sessionToken = '';
-                // Throw special error for upper handler (replace with sample phrases)
                 throw new Error('INVALID_SESSION');
             } else if (response.status === 429) {
-                const usageMsg = (typeof t === 'function') ? t('usageExceeded') : 'Daily usage limit exceeded. Please try again tomorrow.';
-                alert(usageMsg);
-                throw new Error('USAGE_EXCEEDED');
+                // Handle usage exceeded - check error code
+                if (errorData.code === 'FREE_USAGE_EXCEEDED') {
+                    // Free usage exhausted - show password modal
+                    showPasswordModalForFreeLimit();
+                    throw new Error('FREE_USAGE_EXCEEDED');
+                } else if (errorData.code === 'PREMIUM_USAGE_EXCEEDED') {
+                    // Premium usage exhausted - show contact message
+                    showPremiumLimitMessage();
+                    throw new Error('PREMIUM_USAGE_EXCEEDED');
+                } else {
+                    // Generic usage exceeded
+                    const usageMsg = errorData.error || 'Daily usage limit exceeded. Please try again tomorrow.';
+                    alert(usageMsg);
+                    throw new Error('USAGE_EXCEEDED');
+                }
             }
             
             const errorMessage = errorData.error || errorData.details || 'Server request failed: ' + response.status;
@@ -726,9 +778,15 @@ async function callClaudeAPI(prompt) {
             throw new Error('Server returned empty phrase array.');
         }
         
-        // 사용량 정보 업데이트
+        // Update usage info from server response
         if (data.usage) {
-            usageInfo = data.usage;
+            usageInfo = {
+                current: data.usage.current || 0,
+                limit: data.usage.limit || (data.usage.type === 'premium' ? 100 : 3),
+                remaining: data.usage.remaining || 0,
+                exceeded: data.usage.exceeded || false,
+                type: data.usage.type || 'free'
+            };
             updateUsageDisplay();
         }
         
@@ -1124,28 +1182,28 @@ function highlightKeywords(text) {
 function getPhraseTemplates(target) {
     const templates = {
         senior: [
-            "건강한 노년을 위한 필수 지식",
-            "50대 이상이 알아야 할 건강 비밀",
-            "노화 방지의 핵심 포인트",
-            "시니어 건강관리의 새로운 접근"
+            "시니어를 위한 인생 2막 건강 습관",
+            "50대 이후 꼭 알아야 할 행복한 노년 비결",
+            "나이 들어도 젊게 사는 방법, 지금 시작하세요",
+            "은퇴 후 건강과 행복을 지키는 현실 꿀팁"
         ],
         worker: [
-            "직장인 필수 생존 정보",
-            "스트레스 해소의 과학적 방법",
-            "업무 효율성 극대화 비법",
-            "직장인 건강관리 완벽 가이드"
+            "직장인 필수 건강 루틴 5가지",
+            "퇴근 후 피로를 풀어주는 스트레스 해소법",
+            "바쁜 직장인을 위한 현실적인 자기관리 팁",
+            "매일의 업무 효율을 높이는 작은 습관"
         ],
         housewife: [
-            "주부를 위한 실용 정보",
-            "가정 건강관리의 핵심",
-            "육아와 살림의 균형",
-            "주부 건강관리 완벽 가이드"
+            "주부를 위한 하루 10분 건강 루틴",
+            "가정과 나를 지키는 균형의 기술",
+            "살림과 건강, 두 마리 토끼를 잡는 방법",
+            "행복한 집을 만드는 주부 건강 비결"
         ],
         all: [
-            "모든 연령대가 알아야 할 정보",
-            "일상생활의 숨겨진 진실",
-            "건강한 삶을 위한 필수 지식",
-            "삶의 질 향상을 위한 핵심 정보"
+            "모든 세대를 위한 건강하고 행복한 삶의 비결",
+            "일상 속 작은 변화가 만드는 건강한 인생",
+            "누구나 따라할 수 있는 생활 건강 습관",
+            "행복한 하루를 위한 필수 웰빙 정보"
         ]
     };
     
