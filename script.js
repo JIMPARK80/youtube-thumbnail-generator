@@ -1,50 +1,77 @@
 // Step Navigation
 let currentStep = 1;
-let userPassword = '';
+let sessionToken = sessionStorage.getItem('sessionToken') || ''; // Session token (used instead of password)
 let usageInfo = { current: 0, limit: 100, remaining: 100 };
 
-// 비밀번호 인증 함수 (성능 최적화)
-function checkPassword() {
+// Password authentication function (session token method)
+async function checkPassword() {
     const passwordInput = document.getElementById('passwordInput');
     const password = passwordInput.value.trim();
     
     if (!password) {
-        showPasswordError('비밀번호를 입력해주세요.');
+        const errorMsg = (typeof t === 'function') ? t('passwordRequired') : 'Please enter the password.';
+        showPasswordError(errorMsg);
         return;
     }
     
-    userPassword = password;
-    hidePasswordModal();
-    
-    // 비동기로 사용량 정보 로드 (UI 블로킹 방지)
-    setTimeout(() => {
-        loadUsageInfo();
-    }, 100);
+    try {
+        // Login request to server
+        const response = await fetch('/api/login', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ password: password })
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            const errorMsg = errorData.error || 'Incorrect password.';
+            showPasswordError(errorMsg);
+            return;
+        }
+        
+        const data = await response.json();
+        
+        // Store session token (using sessionStorage - automatically deleted when tab closes)
+        sessionToken = data.token;
+        sessionStorage.setItem('sessionToken', sessionToken);
+        
+        hidePasswordModal();
+        
+        // Load usage info asynchronously (prevent UI blocking)
+        setTimeout(() => {
+            loadUsageInfo();
+        }, 100);
+    } catch (error) {
+        console.error('Login failed:', error);
+        showPasswordError('Login failed. Please try again.');
+    }
 }
 
-// 비밀번호 모달 숨기기
+// Hide password modal
 function hidePasswordModal() {
     document.getElementById('passwordModal').style.display = 'none';
     document.getElementById('usageInfo').style.display = 'flex';
 }
 
-// 비밀번호 에러 표시
+// Show password error
 function showPasswordError(message) {
     const errorEl = document.getElementById('passwordError');
     errorEl.textContent = message;
     errorEl.style.display = 'block';
 }
 
-// 사용량 정보 로드 (성능 최적화)
+// Load usage info (performance optimized)
 async function loadUsageInfo() {
     try {
-        // 요청 타임아웃 설정 (5초)
+        // Set request timeout (5 seconds)
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000);
         
         const response = await fetch('/api/usage', {
             signal: controller.signal,
-            cache: 'no-cache' // 캐시 방지
+            cache: 'no-cache' // Prevent caching
         });
         
         clearTimeout(timeoutId);
@@ -55,26 +82,46 @@ async function loadUsageInfo() {
         }
     } catch (error) {
         if (error.name === 'AbortError') {
-            console.warn('사용량 정보 로드 타임아웃');
+            console.warn('Usage info load timeout');
         } else {
-            console.error('사용량 정보 로드 실패:', error);
+            console.error('Usage info load failed:', error);
         }
     }
 }
 
-// 사용량 표시 업데이트
+// Update usage display
 function updateUsageDisplay() {
-    document.getElementById('usageCount').textContent = usageInfo.current;
-    document.getElementById('remainingCount').textContent = usageInfo.remaining;
+    const usageCountEl = document.getElementById('usageCount');
+    const remainingCountEl = document.getElementById('remainingCount');
+    const usageTextEl = document.querySelector('.usage-text');
+    const remainingTextEl = document.querySelector('.usage-remaining');
     
-    // 사용량이 많으면 경고 색상
-    const remainingEl = document.querySelector('.usage-remaining');
-    if (usageInfo.remaining <= 3) {
-        remainingEl.style.background = 'rgba(220, 53, 69, 0.2)';
-        remainingEl.style.borderColor = '#dc3545';
-    } else {
-        remainingEl.style.background = 'rgba(40, 167, 69, 0.2)';
-        remainingEl.style.borderColor = '#28a745';
+    if (usageCountEl) {
+        usageCountEl.textContent = usageInfo.current;
+    }
+    if (remainingCountEl) {
+        remainingCountEl.textContent = usageInfo.remaining;
+    }
+    
+    // Apply translated text (if t() function is defined)
+    if (typeof t === 'function') {
+        if (usageTextEl) {
+            usageTextEl.innerHTML = t('usageCount') + ': <span id="usageCount">' + usageInfo.current + '</span>/100';
+        }
+        if (remainingTextEl) {
+            remainingTextEl.innerHTML = t('remainingText') + ': <span id="remainingCount">' + usageInfo.remaining + '</span>';
+        }
+    }
+    
+    // Warning color if usage is high
+    if (remainingTextEl) {
+        if (usageInfo.remaining <= 3) {
+            remainingTextEl.style.background = 'rgba(220, 53, 69, 0.2)';
+            remainingTextEl.style.borderColor = '#dc3545';
+        } else {
+            remainingTextEl.style.background = 'rgba(40, 167, 69, 0.2)';
+            remainingTextEl.style.borderColor = '#28a745';
+        }
     }
 }
 
@@ -85,7 +132,7 @@ function goToStep(step) {
     });
     
     // Show target step
-    document.getElementById(`step${step}`).classList.add('active');
+    document.getElementById('step' + step).classList.add('active');
     
     // Update step indicators
     document.querySelectorAll('.step').forEach((stepEl, index) => {
@@ -97,10 +144,16 @@ function goToStep(step) {
 
 // Target audience selection
 document.addEventListener('DOMContentLoaded', () => {
-    // 비밀번호 모달 표시
-    document.getElementById('passwordModal').style.display = 'flex';
+    // Use stored session token if available, otherwise show modal
+    if (sessionToken) {
+        hidePasswordModal();
+        loadUsageInfo();
+    } else {
+        // Show password modal
+        document.getElementById('passwordModal').style.display = 'flex';
+    }
     
-    // 비밀번호 입력 이벤트
+    // Password input events
     document.getElementById('passwordSubmit').addEventListener('click', checkPassword);
     document.getElementById('passwordInput').addEventListener('keypress', function(e) {
         if (e.key === 'Enter') {
@@ -108,19 +161,71 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     
-    // 비밀번호 표시/숨기기 토글
-    document.getElementById('togglePassword').addEventListener('click', function() {
+    // Password visibility toggle function
+    function setupPasswordToggle() {
+        const togglePasswordBtn = document.getElementById('togglePassword');
         const passwordInput = document.getElementById('passwordInput');
-        const toggleBtn = document.getElementById('togglePassword');
         
-        if (passwordInput.type === 'password') {
-            passwordInput.type = 'text';
-            toggleBtn.textContent = '🙈';
-        } else {
-            passwordInput.type = 'password';
-            toggleBtn.textContent = '👁️';
+        if (togglePasswordBtn && passwordInput) {
+            // Remove existing event listeners (prevent duplicates)
+            const newToggleBtn = togglePasswordBtn.cloneNode(true);
+            togglePasswordBtn.parentNode.replaceChild(newToggleBtn, togglePasswordBtn);
+            
+            // Support both click and touch events
+            function togglePasswordVisibility(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const input = document.getElementById('passwordInput');
+                const btn = document.getElementById('togglePassword');
+                
+                if (input && btn) {
+                    if (input.type === 'password') {
+                        input.type = 'text';
+                        btn.textContent = '🙈';
+                        btn.setAttribute('aria-label', 'Hide password');
+                    } else {
+                        input.type = 'password';
+                        btn.textContent = '👁️';
+                        btn.setAttribute('aria-label', 'Show password');
+                    }
+                }
+            }
+            
+            // Support multiple event types (click, touch)
+            const btn = document.getElementById('togglePassword');
+            btn.addEventListener('click', togglePasswordVisibility, { capture: true });
+            btn.addEventListener('touchend', function(e) {
+                e.preventDefault();
+                togglePasswordVisibility(e);
+            }, { capture: true });
+            
+            // Also support mouse down (more reliable click detection)
+            btn.addEventListener('mousedown', function(e) {
+                e.preventDefault();
+            });
         }
-    });
+    }
+    
+    // Initial setup
+    setupPasswordToggle();
+    
+    // Re-setup when modal is displayed (just in case)
+    const passwordModal = document.getElementById('passwordModal');
+    if (passwordModal) {
+        // Detect when modal is displayed using MutationObserver
+        const observer = new MutationObserver(function(mutations) {
+            mutations.forEach(function(mutation) {
+                if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
+                    const modal = document.getElementById('passwordModal');
+                    if (modal && modal.style.display === 'flex') {
+                        setTimeout(setupPasswordToggle, 100);
+                    }
+                }
+            });
+        });
+        observer.observe(passwordModal, { attributes: true, attributeFilter: ['style'] });
+    }
     
     const targetBtns = document.querySelectorAll('.target-btn');
     targetBtns.forEach(btn => {
@@ -139,26 +244,14 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
     
-    // Authority selection with custom input
-    const authoritySelect = document.getElementById('authority');
-    const customAuthorityInput = document.getElementById('customAuthority');
-    
-    authoritySelect.addEventListener('change', function() {
-        if (this.value === '직접입력') {
-            customAuthorityInput.style.display = 'block';
-            customAuthorityInput.focus();
-        } else {
-            customAuthorityInput.style.display = 'none';
-            customAuthorityInput.value = '';
-        }
-    });
-    
     // Max length selection with custom input
     const maxLengthSelect = document.getElementById('maxLength');
     const customMaxLengthInput = document.getElementById('customMaxLength');
     
     maxLengthSelect.addEventListener('change', function() {
-        if (this.value === '직접입력') {
+        // Handle both translated "Custom" and original "Custom"
+        const customInputValue = (typeof t === 'function') ? t('customInput') : 'Custom';
+        if (this.value === 'Custom' || this.value === customInputValue || this.selectedOptions[0]?.textContent.includes('Custom')) {
             customMaxLengthInput.style.display = 'block';
             customMaxLengthInput.focus();
         } else {
@@ -166,14 +259,89 @@ document.addEventListener('DOMContentLoaded', () => {
             customMaxLengthInput.value = '';
         }
     });
+    
+    // Initialize the application
+    // Clear form fields to prevent browser autocomplete (multiple methods)
+    function clearFormFields() {
+        const videoTopic = document.getElementById('videoTopic');
+        const shockPoint = document.getElementById('shockPoint');
+        const synopsis = document.getElementById('synopsis');
+        const additionalInfo = document.getElementById('additionalInfo');
+        
+        // Clear values forcefully
+        if (videoTopic) {
+            videoTopic.value = '';
+            videoTopic.blur();
+            videoTopic.focus();
+            videoTopic.blur();
+        }
+        if (shockPoint) {
+            shockPoint.value = '';
+            shockPoint.blur();
+        }
+        if (synopsis) {
+            synopsis.value = '';
+            synopsis.blur();
+        }
+        if (additionalInfo) {
+            additionalInfo.value = '';
+            additionalInfo.blur();
+        }
+    }
+    
+    // Wait for DOM to be fully ready
+    setTimeout(() => {
+        // Clear immediately
+        clearFormFields();
+        
+        // Clear again multiple times to catch browser autocomplete at different stages
+        setTimeout(clearFormFields, 50);
+        setTimeout(clearFormFields, 200);
+        setTimeout(clearFormFields, 500);
+        setTimeout(clearFormFields, 1000);
+    }, 100);
+    
+    // Set initial step
+    goToStep(1);
+    
+    // Add smooth scrolling
+    document.documentElement.style.scrollBehavior = 'smooth';
+    
+    // Add keyboard navigation
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && currentStep < 3) {
+            if (currentStep === 1 && validateStep1()) {
+                goToStep(2);
+            } else if (currentStep === 2 && validateStep2()) {
+                generatePhrases();
+            }
+        }
+    });
 });
 
 // AI Phrase Generation with Claude API
 async function generatePhrases() {
-    const generateBtn = document.querySelector('.generate-btn');
-    generateBtn.textContent = 'AI 생성하기...';
-    generateBtn.classList.add('loading');
-    generateBtn.disabled = true;
+    // Check session token (get from sessionStorage if not available)
+    if (!sessionToken) {
+        sessionToken = sessionStorage.getItem('sessionToken') || '';
+    }
+    
+    // Use sample phrases if no session token (don't show password modal)
+    if (!sessionToken) {
+        console.log('No session token. Using sample phrases.');
+        const fallbackPhrases = generateSamplePhrases();
+        displayPhrases(fallbackPhrases);
+        goToStep(3);
+        return;
+    }
+    
+    const generateBtn = document.querySelector('.generate-btn') || document.querySelector('.regenerate-btn');
+    const generateText = (typeof t === 'function') ? t('generate') : 'Generating with AI...';
+    if (generateBtn) {
+        generateBtn.textContent = generateText;
+        generateBtn.classList.add('loading');
+        generateBtn.disabled = true;
+    }
     
     try {
         // Collect data from Step 1 and Step 2
@@ -183,143 +351,327 @@ async function generatePhrases() {
         const prompt = createPrompt(formData);
         
         // Call Claude API
-        const phrases = await callClaudeAPI(prompt);
+        let phrases;
+        try {
+            phrases = await callClaudeAPI(prompt);
+        } catch (apiError) {
+            // Handle API call errors
+            console.error('API call error:', apiError);
+            
+            // Replace with sample phrases for session expired or password errors
+            if (apiError.message === 'INVALID_SESSION' || apiError.message === 'INVALID_PASSWORD') {
+                console.log('Authentication issue. Using sample phrases.');
+                phrases = generateSamplePhrases();
+            } else if (apiError.message === 'USAGE_EXCEEDED') {
+                // Usage exceeded is already shown in alert
+                return;
+            } else {
+                // Re-throw other errors (handled in upper catch)
+                throw apiError;
+            }
+        }
+        
+        // Error if phrases is null (this should not normally happen)
+        if (!phrases) {
+            throw new Error('Failed to generate phrases. No server response.');
+        }
+        
+        // Error if phrases is not an array or is empty
+        if (!Array.isArray(phrases) || phrases.length === 0) {
+            throw new Error('No phrases generated.');
+        }
         
         // Display generated phrases
         displayPhrases(phrases);
         goToStep(3);
         
     } catch (error) {
-        console.error('AI 생성 실패:', error);
-        alert('AI 문구 생성에 실패했습니다. 다시 시도해주세요.');
+        console.error('AI generation failed:', error);
+        console.error('Error details:', error.stack);
         
-        // Fallback to sample phrases
+        // Replace certain errors with sample phrases
+        if (error.message === 'INVALID_SESSION' || error.message === 'INVALID_PASSWORD') {
+            // Replace session expired or password errors with sample phrases (don't show password modal)
+            console.log('Authentication issue. Using sample phrases.');
+            const fallbackPhrases = generateSamplePhrases();
+            displayPhrases(fallbackPhrases);
+            goToStep(3);
+            return;
+        }
+        
+        if (error.message === 'USAGE_EXCEEDED') {
+            // Usage exceeded is already shown in alert
+            const usageMsg = (typeof t === 'function') ? t('usageExceeded') : 'Daily usage limit exceeded. Please try again tomorrow.';
+            alert(usageMsg);
+            return;
+        }
+        
+        // Replace other errors with sample phrases
+        console.log('Error occurred. Using sample phrases:', error.message);
         const fallbackPhrases = generateSamplePhrases();
         displayPhrases(fallbackPhrases);
         goToStep(3);
     } finally {
-        generateBtn.textContent = 'AI 생성 중...';
-        generateBtn.classList.remove('loading');
-        generateBtn.disabled = false;
+        const generateBtn = document.querySelector('.generate-btn') || document.querySelector('.regenerate-btn');
+        if (generateBtn) {
+            const generateText = (typeof t === 'function') ? t('generate') : 'Generating with AI...';
+            generateBtn.textContent = generateText;
+            generateBtn.classList.remove('loading');
+            generateBtn.disabled = false;
+        }
     }
 }
 
 // Collect form data from Step 1 and Step 2
 function collectFormData() {
-    const authoritySelect = document.getElementById('authority');
-    const customAuthorityInput = document.getElementById('customAuthority');
     const maxLengthSelect = document.getElementById('maxLength');
     const customMaxLengthInput = document.getElementById('customMaxLength');
+    const videoTopicEl = document.getElementById('videoTopic');
+    const shockPointEl = document.getElementById('shockPoint');
+    const synopsisEl = document.getElementById('synopsis');
+    const phraseCountEl = document.getElementById('phraseCount');
+    const shockCheckEl = document.getElementById('shockCheck');
+    const targetBtn = document.querySelector('.target-btn.active');
+    const genderBtn = document.querySelector('.gender-btn.active');
     
-    // 권위 요소 처리 (직접입력인 경우 커스텀 값 사용)
-    let authority = authoritySelect.value;
-    if (authority === '직접입력' && customAuthorityInput.value.trim()) {
-        authority = customAuthorityInput.value.trim();
-    }
-    
-    // 문구 길이 처리 (직접입력인 경우 커스텀 값 사용)
-    let maxLength = parseInt(maxLengthSelect.value);
-    if (maxLengthSelect.value === '직접입력' && customMaxLengthInput.value) {
-        maxLength = parseInt(customMaxLengthInput.value);
+    // Handle phrase length (use custom value if Custom is selected)
+    let maxLength = 20; // Default value
+    if (maxLengthSelect) {
+        maxLength = parseInt(maxLengthSelect.value) || 20;
+        // Handle both translated "Custom" and original "Custom"
+        const customInputValue = (typeof t === 'function') ? t('customInput') : 'Custom';
+        if ((maxLengthSelect.value === 'Custom' || maxLengthSelect.value === customInputValue || isNaN(maxLength)) && customMaxLengthInput && customMaxLengthInput.value) {
+            maxLength = parseInt(customMaxLengthInput.value) || 20;
+        }
     }
     
     const data = {
         // Step 1: Basic Information
-        videoTopic: document.getElementById('videoTopic').value.trim(),
-        targetAudience: document.querySelector('.target-btn.active').dataset.target,
-        gender: document.querySelector('.gender-btn.active').dataset.gender,
+        videoTopic: videoTopicEl ? videoTopicEl.value.trim() : '',
+        targetAudience: targetBtn ? targetBtn.dataset.target : 'all',
+        gender: genderBtn ? genderBtn.dataset.gender : 'both',
         
         // Step 2: Core Message
-        shockPoint: document.getElementById('shockPoint').value.trim(),
-        synopsis: document.getElementById('synopsis').value.trim(),
-        additionalInfo: document.getElementById('additionalInfo').value.trim(),
-        authority: authority,
-        phraseCount: parseInt(document.getElementById('phraseCount').value),
+        shockPoint: shockPointEl ? shockPointEl.value.trim() : '',
+        synopsis: synopsisEl ? synopsisEl.value.trim() : '',
+        authority: '', // Authority element removed
+        phraseCount: phraseCountEl ? parseInt(phraseCountEl.value) || 3 : 3,
         maxLength: maxLength,
-        shockCheck: document.getElementById('shockCheck').checked,
-        contentCheck: document.getElementById('contentCheck').checked
+        shockCheck: shockCheckEl ? shockCheckEl.checked : false
     };
     
     return data;
 }
 
+// Input language detection function
+function detectInputLanguage(text) {
+    if (!text || text.trim().length === 0) {
+        return 'ko'; // Default is Korean
+    }
+    
+    // English pattern (more than 50% English alphabets)
+    const englishPattern = /[a-zA-Z]/g;
+    const koreanPattern = /[가-힣]/g;
+    
+    const englishMatches = (text.match(englishPattern) || []).length;
+    const koreanMatches = (text.match(koreanPattern) || []).length;
+    const totalChars = text.replace(/\s/g, '').length;
+    
+    // English if English is more, otherwise Korean
+    if (totalChars > 0 && englishMatches / totalChars > 0.5) {
+        return 'en';
+    }
+    
+    return 'ko';
+}
+
 // Create prompt for Claude API
 function createPrompt(data) {
+    // Detect input language (check videoTopic, shockPoint, synopsis)
+    const inputTexts = [
+        data.videoTopic,
+        data.shockPoint,
+        data.synopsis
+    ].filter(text => text && text.trim().length > 0);
+    
+    let detectedLanguage = 'ko';
+    if (inputTexts.length > 0) {
+        // Detect language for each input text
+        const languageScores = inputTexts.map(text => detectInputLanguage(text));
+        const englishCount = languageScores.filter(lang => lang === 'en').length;
+        const koreanCount = languageScores.filter(lang => lang === 'ko').length;
+        
+        // Generate in English if English input is more
+        // If same count, generate in English if there's at least one English input (handle mixed input)
+        if (englishCount > koreanCount || (englishCount > 0 && koreanCount === 0)) {
+            detectedLanguage = 'en';
+        }
+        
+        console.log('언어 감지 결과:', {
+            inputTexts: inputTexts.length,
+            englishCount: englishCount,
+            koreanCount: koreanCount,
+            detectedLanguage: detectedLanguage
+        });
+    }
+    
     const targetLabels = {
-        senior: '시니어 (50대 이상)',
-        worker: '2030 직장인',
-        housewife: '주부',
-        all: '전체'
+        senior: detectedLanguage === 'en' ? 'Senior (50+)' : '시니어 (50대 이상)',
+        worker: detectedLanguage === 'en' ? 'Office workers (20-30s)' : '2030 직장인',
+        housewife: detectedLanguage === 'en' ? 'Housewife' : '주부',
+        all: detectedLanguage === 'en' ? 'All' : '전체'
     };
     
     const genderLabels = {
-        male: '남성',
-        female: '여성',
-        both: '남녀 모두'
+        male: detectedLanguage === 'en' ? 'Male' : '남성',
+        female: detectedLanguage === 'en' ? 'Female' : '여성',
+        both: detectedLanguage === 'en' ? 'Both' : '남녀 모두'
     };
     
-    let prompt = `유튜브 썸네일 문구를 생성해주세요.
+    // Determine prompt language based on input
+    const promptLanguage = detectedLanguage === 'en' ? 'en' : 'ko';
+    const languageInstruction = detectedLanguage === 'en' 
+        ? '6. Write in English (match the input language)' 
+        : '6. Write in Korean';
+    
+    const promptTitle = detectedLanguage === 'en'
+        ? 'Generate YouTube thumbnail phrases.'
+        : 'Generate YouTube thumbnail phrases.';
+    
+    const basicInfoLabel = detectedLanguage === 'en' ? '**Basic Information:**' : '**Basic Information:**';
+    const coreMessageLabel = detectedLanguage === 'en' ? '**Core Message:**' : '**Core Message:**';
+    const requirementsLabel = detectedLanguage === 'en' ? '**Requirements:**' : '**Requirements:**';
+    const generationRulesLabel = detectedLanguage === 'en' ? '**Generation Rules:**' : '**Generation Rules:**';
+    const outputFormatLabel = detectedLanguage === 'en' ? '**Output Format:**' : '**Output Format:**';
+    const threeLineRulesLabel = detectedLanguage === 'en' ? '**3-Line Structure Rules:**' : '**3-Line Structure Rules:**';
+    
+    const videoTopicLabel = detectedLanguage === 'en' ? '- Video Topic:' : '- Video Topic:';
+    const targetAudienceLabel = detectedLanguage === 'en' ? '- Target Audience:' : '- Target Audience:';
+    const genderLabel = detectedLanguage === 'en' ? '- Gender:' : '- Gender:';
+    const shockPointLabel = detectedLanguage === 'en' ? '- Impact Point:' : '- Impact Point:';
+    const synopsisLabel = detectedLanguage === 'en' ? '- Video Synopsis:' : '- Video Synopsis:';
+    const phraseCountLabel = detectedLanguage === 'en' ? '- Number of phrases to generate:' : '- Number of phrases to generate:';
+    const maxLengthLabel = detectedLanguage === 'en' ? '- Maximum length:' : '- Maximum length:';
+    const shockCheckLabel = detectedLanguage === 'en' ? '- Target impact point:' : '- Target impact point:';
+    
+    const phraseCountText = detectedLanguage === 'en' 
+        ? `${data.phraseCount} phrases`
+        : `${data.phraseCount} phrases`;
+    const maxLengthText = detectedLanguage === 'en'
+        ? `${data.maxLength} characters`
+        : `${data.maxLength} characters`;
+    const shockCheckText = detectedLanguage === 'en'
+        ? (data.shockCheck ? 'Yes' : 'No')
+        : (data.shockCheck ? 'Yes' : 'No');
+    
+    const exampleLabel = detectedLanguage === 'en' ? 'Examples:' : 'Examples:';
+    
+    let prompt = `${promptTitle}
 
-**기본 정보:**
-- 영상 주제: ${data.videoTopic}
-- 타겟층: ${targetLabels[data.targetAudience]}
-- 성별: ${genderLabels[data.gender]}
+${basicInfoLabel}
+${videoTopicLabel} ${data.videoTopic}
+${targetAudienceLabel} ${targetLabels[data.targetAudience]}
+${genderLabel} ${genderLabels[data.gender]}
 
-**핵심 메시지:**
-- 충격 포인트: ${data.shockPoint}
-- 영상 시놉시스: ${data.synopsis}
-- 추가 정보: ${data.additionalInfo}
-- 권위 요소: ${data.authority}
+${coreMessageLabel}
+${shockPointLabel} ${data.shockPoint}
+${synopsisLabel} ${data.synopsis}
 
-**요구사항:**
-- 생성할 문구 개수: ${data.phraseCount}개
-- 최대 길이: ${data.maxLength}자
-- 충격 포인트 공략: ${data.shockCheck ? '예' : '아니오'}
-- 충분한 내용: ${data.contentCheck ? '예' : '아니오'}
+${requirementsLabel}
+${phraseCountLabel} ${phraseCountText}
+${maxLengthLabel} ${maxLengthText}
+${shockCheckLabel} ${shockCheckText}
 
-**생성 규칙:**
-1. 클릭을 유도하는 자극적인 문구로 작성
-2. 숫자나 통계를 활용하여 임팩트 있게 표현 (예: 20배, 300%, 3분만에)
-3. 호기심을 자극하는 표현 사용
-4. 타겟층에 맞는 언어와 톤 사용
-5. 각 문구는 독립적이고 매력적이어야 함
-6. 한국어로 작성
-7. **문구 길이: 20-35자 (공백 제외) - 썸네일 최적화**
-8. 각 문구는 완전히 다른 각도와 접근 방식으로 작성
-9. 숫자, 통계, 시간, 비율 등을 적극 활용
-10. "?", "!", "..." 등으로 호기심 유발
-11. 간결하고 임팩트 있는 표현 사용
+${generationRulesLabel}
+1. ${detectedLanguage === 'en' ? 'Write engaging phrases that encourage clicks' : 'Write engaging phrases that encourage clicks'}
+2. ${detectedLanguage === 'en' ? 'Use numbers and statistics for impact (e.g., 20x, 300%, in 3 minutes)' : 'Use numbers and statistics for impact (e.g., 20x, 300%, in 3 minutes)'}
+3. ${detectedLanguage === 'en' ? 'Use expressions that stimulate curiosity' : 'Use expressions that stimulate curiosity'}
+4. ${detectedLanguage === 'en' ? 'Use language and tone appropriate for the target audience' : 'Use language and tone appropriate for the target audience'}
+5. ${detectedLanguage === 'en' ? 'Each phrase should be independent and attractive' : 'Each phrase should be independent and attractive'}
+${languageInstruction}
+7. **${detectedLanguage === 'en' ? 'Phrase length: 20-35 characters (excluding spaces) - optimized for thumbnails' : 'Phrase length: 20-35 characters (excluding spaces) - optimized for thumbnails'}**
+${detectedLanguage === 'en' ? '**CRITICAL: You MUST write all phrases in English. Match the input language exactly.**' : ''}
+8. ${detectedLanguage === 'en' ? 'Each phrase should be written from a completely different angle and approach' : 'Each phrase should be written from a completely different angle and approach'}
+9. ${detectedLanguage === 'en' ? 'Actively use numbers, statistics, time, ratios, etc.' : 'Actively use numbers, statistics, time, ratios, etc.'}
+10. ${detectedLanguage === 'en' ? 'Stimulate curiosity with "?", "!", "..." etc.' : 'Stimulate curiosity with "?", "!", "..." etc.'}
+11. ${detectedLanguage === 'en' ? 'Use concise and impactful expressions' : 'Use concise and impactful expressions'}
 
-**출력 형식:**
-${data.phraseCount}개의 완전히 독립적인 썸네일 문구를 생성해주세요.
-각 문구는 3줄로 구성하여 작성하고, 문구 사이에는 빈 줄을 넣어주세요.
-**중요: 절대 번호(1., 2., 3. 등)나 기호(-, • 등)를 사용하지 마세요.**
-각 문구는 순수한 텍스트만으로 3줄을 구성하세요.
-순수한 문구만 작성해주세요.
+${outputFormatLabel}
+${detectedLanguage === 'en' 
+    ? `Generate ${data.phraseCount} completely independent thumbnail phrases in ENGLISH.\nEach phrase should be written in 3 lines, and put a blank line between phrases.\n**IMPORTANT: Never use numbers (1., 2., 3., etc.) or symbols (-, •, etc.).**\nEach phrase should consist of pure text in 3 lines.\nWrite only pure phrases in English.\n**CRITICAL: All phrases MUST be in English language.**`
+    : `Generate ${data.phraseCount} completely independent thumbnail phrases.\nEach phrase should be written in 3 lines, and put a blank line between phrases.\n**IMPORTANT: Never use numbers (1., 2., 3., etc.) or symbols (-, •, etc.).**\nEach phrase should consist of pure text in 3 lines.\nWrite only pure phrases.`}
 
-**3줄 구성 규칙:**
-- 1줄: 제목/핵심 메시지 (큰 글씨)
-- 2줄: 강조 문구/결과 (중간 글씨, 색상 강조)
-- 3줄: 부제목/방법 (작은 글씨)
+${threeLineRulesLabel}
+- ${detectedLanguage === 'en' ? 'Line 1: Title/Core Message (large font)' : 'Line 1: Title/Core Message (large font)'}
+- ${detectedLanguage === 'en' ? 'Line 2: Emphasized phrase/Result (medium font, color emphasis)' : 'Line 2: Emphasized phrase/Result (medium font, color emphasis)'}
+- ${detectedLanguage === 'en' ? 'Line 3: Subtitle/Method (small font)' : 'Line 3: Subtitle/Method (small font)'}
 
-예시:
-당신이 매일 마시는 건강음료가
-암세포를 20배 빠르게 키웁니다
-3분만에 확인 방법 공개
+${exampleLabel}
+${detectedLanguage === 'en' ? 
+`At 70, I turned on a smartphone for the first time
+I couldn't even read the letters, but now I'm a YouTuber!
+A 70-year-old grandmother's first video call story
 
-커피 한 잔 '이 성분' 때문에
-암 발병률 300% 증가
-서울대 연구팀이 밝힌 충격적 사실
+One comment changed my life
+I cried at a message from a stranger
+The second spring that came after retirement
 
-생수병 뚜껑 절대 모르고
-마시지 마세요
-독성물질 100배 검출`;
+One finger connected me to the world again
+The moment 'learning' overcame age
+The miraculous change brought by smartphones
+
+Reunited with a friend after 30 years
+Through just one KakaoTalk emoji
+A story of friendship connected by digital
+
+"What use is the internet for someone like me?"
+What changed that was a single photo
+The day I embraced lost memories again
+
+The world changed, but
+When I changed, the world smiled again
+After retirement, learning 'new connection skills' for the first time` :
+
+`스마트폰이 이렇게 따뜻할 줄
+손주 얼굴 한 번 보려다 인생이 달라졌습니다
+70세 할머니의 첫 영상통화 이야기
+
+댓글 하나가 내 인생을 바꿨습니다
+낯선 이름의 메시지에 울었습니다
+은퇴 후 찾아온 두 번째 봄
+
+손가락 하나로 세상과 다시 연결되다
+'배움'이 나이를 이긴 순간
+스마트폰이 가져온 기적 같은 변화
+
+30년 끊긴 친구를
+카톡 이모티콘 하나로 다시 만났습니다
+디지털이 이어준 우정의 이야기
+
+"나 같은 노인에게 인터넷이 무슨 소용이야?"
+그 말을 바꾼 건 단 한 장의 사진이었습니다
+잃어버린 추억을 다시 품은 날
+
+세상은 변했지만
+내가 변하니 세상이 다시 웃어줬다
+은퇴 후, 처음 배우는 '새로운 연결의 기술'`}
+`;
 
     return prompt;
 }
 
-// Call Claude API (서버 사이드 프록시 사용)
+// Call Claude API (using server-side proxy)
 async function callClaudeAPI(prompt) {
+    // Check session token
+    if (!sessionToken) {
+        sessionToken = sessionStorage.getItem('sessionToken') || '';
+    }
+    
+    // Error if no session token (replaced with sample phrases in upper handler)
+    if (!sessionToken) {
+        throw new Error('INVALID_SESSION');
+    }
+    
     try {
         // Option 1: 서버 사이드 프록시 사용 (권장)
         const response = await fetch('/api/generate-phrases', {
@@ -329,23 +681,50 @@ async function callClaudeAPI(prompt) {
             },
             body: JSON.stringify({ 
                 prompt: prompt,
-                password: userPassword
+                token: sessionToken
             })
         });
         
         if (!response.ok) {
-            const errorData = await response.json();
-            if (response.status === 401) {
-                showPasswordError('비밀번호가 올바르지 않습니다.');
-                return null;
-            } else if (response.status === 429) {
-                alert('일일 사용량을 초과했습니다. 내일 다시 시도해주세요.');
-                return null;
+            let errorData;
+            try {
+                errorData = await response.json();
+            } catch (e) {
+                errorData = { error: 'Unable to parse server response.' };
             }
-            throw new Error(errorData.error || `서버 요청 실패: ${response.status}`);
+            
+            if (response.status === 401) {
+                // Session expired - delete token and throw error (don't show password modal)
+                sessionStorage.removeItem('sessionToken');
+                sessionToken = '';
+                // Throw special error for upper handler (replace with sample phrases)
+                throw new Error('INVALID_SESSION');
+            } else if (response.status === 429) {
+                const usageMsg = (typeof t === 'function') ? t('usageExceeded') : 'Daily usage limit exceeded. Please try again tomorrow.';
+                alert(usageMsg);
+                throw new Error('USAGE_EXCEEDED');
+            }
+            
+            const errorMessage = errorData.error || errorData.details || 'Server request failed: ' + response.status;
+            throw new Error(errorMessage);
         }
         
         const data = await response.json();
+        
+        // Validate response data
+        if (!data.phrases) {
+            throw new Error('Failed to receive phrase data from server. Response: ' + JSON.stringify(data));
+        }
+        
+        // Check if phrases is an array
+        if (!Array.isArray(data.phrases)) {
+            throw new Error('Invalid server response format. phrases is not an array.');
+        }
+        
+        // Error if phrases is empty
+        if (data.phrases.length === 0) {
+            throw new Error('Server returned empty phrase array.');
+        }
         
         // 사용량 정보 업데이트
         if (data.usage) {
@@ -356,81 +735,49 @@ async function callClaudeAPI(prompt) {
         return data.phrases;
         
     } catch (error) {
-        console.error('서버 API 호출 실패:', error);
+        console.error('Server API call failed:', error);
+        console.error('Error type:', typeof error);
+        console.error('Error message:', error.message);
         
-        // Option 2: 직접 API 호출 (개발/테스트용)
-        // 주의: 실제 운영에서는 API 키를 클라이언트에 노출하지 마세요
-        return await callClaudeAPIDirect(prompt);
+        // Pass through INVALID_SESSION, INVALID_PASSWORD, or USAGE_EXCEEDED (handled separately in upper handler)
+        if (error && (error.message === 'INVALID_SESSION' || error.message === 'INVALID_PASSWORD' || error.message === 'USAGE_EXCEEDED')) {
+            throw error;
+        }
+        
+        // Throw other errors with message
+        const errorMessage = (error && error.message) ? error.message : String(error);
+        throw new Error('Server communication failed: ' + errorMessage);
     }
 }
 
-// 직접 Claude API 호출 (개발/테스트용)
+// Direct Claude API call (for development/testing)
+// Note: Do not use this function on the client side. process.env does not work in browsers.
 async function callClaudeAPIDirect(prompt) {
-    // 환경변수나 설정에서 API 키를 가져오는 것이 좋습니다
-    const API_KEY = process.env.CLAUDE_API_KEY || 'your-claude-api-key-here';
-    
-    if (API_KEY === 'your-claude-api-key-here') {
-        throw new Error('Claude API 키가 설정되지 않았습니다.');
-    }
-    
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': API_KEY,
-            'anthropic-version': '2023-06-01'
-        },
-        body: JSON.stringify({
-            model: 'claude-3-haiku-20240307',
-            max_tokens: 1000,
-            messages: [
-                {
-                    role: 'user',
-                    content: prompt
-                }
-            ]
-        })
-    });
-    
-    if (!response.ok) {
-        throw new Error(`API 요청 실패: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    const content = data.content[0].text;
-    
-    // Parse the response to extract phrases
-    let phrases = content.split('\n\n').filter(phrase => phrase.trim().length > 0);
-    
-    // 추가 정리: 빈 줄이나 번호 제거
-    phrases = phrases.map(phrase => {
-        // 번호나 기호 제거 (1., 2., - 등)
-        return phrase.replace(/^\d+\.\s*/, '').replace(/^[-•]\s*/, '').trim();
-    }).filter(phrase => phrase.length > 0);
-    
-    // 문구에서 번호 패턴 제거 (문구 내부의 번호도 제거)
-    phrases = phrases.map(phrase => {
-        return phrase.replace(/\d+\.\s*/g, '').trim();
-    });
-    
-    // 최대 개수 제한
-    if (phrases.length > 10) {
-        phrases = phrases.slice(0, 10);
-    }
-    
-    return phrases;
+    // This method cannot be used on the client side
+    // Must use server-side proxy
+    throw new Error('Cannot call API directly from client side. Please use server-side proxy.');
 }
 
+// New sample phrases (senior digital adaptation theme)
 function generateSamplePhrases() {
     const samplePhrases = [
-        "당신이 매일 마시는 건강음료가\n암세포를 20배 빠르게 키웁니다\n3분만에 확인 방법 공개",
-        "커피 한 잔 '이 성분' 때문에\n암 발병률 300% 증가\n서울대 연구팀이 밝힌 충격적 사실",
-        "생수병 뚜껑 절대 모르고\n마시지 마세요\n독성물질 100배 검출",
-        "서울대 연구팀이 밝힌\n뜨거운 60도 이상 두면\n독성물질 100배 검출",
-        "의사도 모르는 숨겨진 사실\n야근도 모르고 중독자 사용\n지금도 당신은 습관적으로..."
+        "스마트폰이 이렇게 따뜻할 줄\n손주 얼굴 한 번 보려다 인생이 달라졌습니다\n70세 할머니의 첫 영상통화 이야기",
+        "댓글 하나가 내 인생을 바꿨습니다\n낯선 이름의 메시지에 울었습니다\n은퇴 후 찾아온 두 번째 봄",
+        "손가락 하나로 세상과 다시 연결되다\n'배움'이 나이를 이긴 순간\n스마트폰이 가져온 기적 같은 변화",
+        "30년 끊긴 친구를\n카톡 이모티콘 하나로 다시 만났습니다\n디지털이 이어준 우정의 이야기",
+        "'나 같은 노인에게 인터넷이 무슨 소용이야?'\n그 말을 바꾼 건 단 한 장의 사진이었습니다\n잃어버린 추억을 다시 품은 날",
+        "세상은 변했지만\n내가 변하니 세상이 다시 웃어줬다\n은퇴 후, 처음 배우는 '새로운 연결의 기술'"
     ];
-    
+
     return samplePhrases;
+}
+
+// HTML 이스케이프 함수
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 function displayPhrases(phrases) {
@@ -441,42 +788,61 @@ function displayPhrases(phrases) {
         const phraseEl = document.createElement('div');
         phraseEl.className = 'phrase-item';
         
-        // 문구 길이 확인
+        // Check phrase length
         const lengthInfo = checkPhraseLength(phrase);
         
         const hasWarning = index === 0 || index === 2; // Add warning to some phrases
         
-        // 3줄로 파싱하고 색상 강조 적용
+        // Parse into 3 lines and apply color highlighting
         const phraseLines = parsePhraseToLines(phrase);
         
-        phraseEl.innerHTML = `
-            <div class="phrase-header">
-                <h3 class="phrase-title">문구 ${index + 1}</h3>
-                <div class="phrase-meta">
-                    <span class="length-info ${lengthInfo.isOptimal ? 'optimal' : 'warning'}">${lengthInfo.length}자</span>
-                    ${hasWarning ? '<span class="warning-label">의문적 경고</span>' : ''}
-                </div>
-            </div>
-            <div class="phrase-text">
-                ${phraseLines.map((line, lineIndex) => 
-                    `<span class="phrase-line line${lineIndex + 1}">${highlightKeywords(line)}</span>`
-                ).join('')}
-            </div>
-            <div class="phrase-actions">
-                <button class="edit-btn" data-phrase-index="${index}">수정하기</button>
-            </div>
-            <div class="edit-panel" style="display: none;">
-                <div class="edit-inputs">
-                    ${phraseLines.map((line, lineIndex) => 
-                        `<input type="text" class="edit-input" data-line="${lineIndex}" value="${line}" placeholder="문구를 입력하세요">`
-                    ).join('')}
-                </div>
-                <div class="edit-buttons">
-                    <button class="save-btn" data-phrase-index="${index}">저장</button>
-                    <button class="cancel-btn" data-phrase-index="${index}">취소</button>
-                </div>
-            </div>
-        `;
+        // Use translation function (if t function exists)
+        const phraseLabel = (typeof t === 'function') ? t('phraseLabel') : 'Phrase';
+        const editPlaceholder = (typeof t === 'function') ? t('editPlaceholder') : 'Enter phrase';
+        const editText = (typeof t === 'function') ? t('edit') : 'Edit';
+        const saveText = (typeof t === 'function') ? t('save') : 'Save';
+        const cancelText = (typeof t === 'function') ? t('cancel') : 'Cancel';
+        const warningText = (typeof t === 'function') ? t('warning') : 'Questionable Warning';
+        const charsText = (typeof t === 'function') ? t('characters') : 'chars';
+        
+        // Escape HTML attribute values
+        const escapedPlaceholder = escapeHtml(editPlaceholder);
+        const escapedWarningText = escapeHtml(warningText);
+        
+        // 템플릿 리터럴을 문자열 연결로 변경하여 린터 에러 방지
+        const phraseIndex = index + 1;
+        const lengthInfoClass = lengthInfo.isOptimal ? 'optimal' : 'warning';
+        const warningLabel = hasWarning ? '<span class="warning-label">' + escapedWarningText + '</span>' : '';
+        const phraseLinesHtml = phraseLines.map(function(line, lineIndex) {
+            return '<span class="phrase-line line' + (lineIndex + 1) + '">' + highlightKeywords(line) + '</span>';
+        }).join('');
+        const editInputsHtml = phraseLines.map(function(line, lineIndex) {
+            return '<input type="text" class="edit-input" data-line="' + lineIndex + '" value="' + escapeHtml(line) + '" placeholder="' + escapedPlaceholder + '">';
+        }).join('');
+        
+        phraseEl.innerHTML = 
+            '<div class="phrase-header">' +
+                '<h3 class="phrase-title">' + escapeHtml(phraseLabel) + ' ' + phraseIndex + '</h3>' +
+                '<div class="phrase-meta">' +
+                    '<span class="length-info ' + lengthInfoClass + '">' + lengthInfo.length + escapeHtml(charsText) + '</span>' +
+                    warningLabel +
+                '</div>' +
+            '</div>' +
+            '<div class="phrase-text">' +
+                phraseLinesHtml +
+            '</div>' +
+            '<div class="phrase-actions">' +
+                '<button class="edit-btn" data-phrase-index="' + index + '">' + escapeHtml(editText) + '</button>' +
+            '</div>' +
+            '<div class="edit-panel" style="display: none;">' +
+                '<div class="edit-inputs">' +
+                    editInputsHtml +
+                '</div>' +
+                '<div class="edit-buttons">' +
+                    '<button class="save-btn" data-phrase-index="' + index + '">' + escapeHtml(saveText) + '</button>' +
+                    '<button class="cancel-btn" data-phrase-index="' + index + '">' + escapeHtml(cancelText) + '</button>' +
+                '</div>' +
+            '</div>';
         
         // Add event listeners for edit functionality
         const editBtn = phraseEl.querySelector('.edit-btn');
@@ -486,39 +852,41 @@ function displayPhrases(phrases) {
         const phraseText = phraseEl.querySelector('.phrase-text');
         const editInputs = phraseEl.querySelectorAll('.edit-input');
         
-        // 수정하기 버튼 클릭
+        // Edit button click
         editBtn.addEventListener('click', function() {
             editPanel.style.display = 'block';
             phraseText.style.display = 'none';
             editBtn.style.display = 'none';
         });
         
-        // 저장 버튼 클릭
+        // Save button click
         saveBtn.addEventListener('click', function() {
             const newLines = Array.from(editInputs).map(input => input.value.trim());
             const newPhrase = newLines.join('\n');
             
-            // 문구 길이 확인
+            // Check phrase length
             const newLengthInfo = checkPhraseLength(newPhrase);
             
-            // 문구 업데이트
+            // Update phrase
             const newPhraseLines = parsePhraseToLines(newPhrase);
-            phraseText.innerHTML = newPhraseLines.map((line, lineIndex) => 
-                `<span class="phrase-line line${lineIndex + 1}">${highlightKeywords(line)}</span>`
-            ).join('');
+            phraseText.innerHTML = newPhraseLines.map(function(line, lineIndex) {
+                return '<span class="phrase-line line' + (lineIndex + 1) + '">' + highlightKeywords(line) + '</span>';
+            }).join('');
             
-            // 길이 정보 업데이트
+            // Update length info
             const lengthInfoEl = phraseEl.querySelector('.length-info');
-            lengthInfoEl.textContent = `${newLengthInfo.length}자`;
-            lengthInfoEl.className = `length-info ${newLengthInfo.isOptimal ? 'optimal' : 'warning'}`;
+            const charsText = (typeof t === 'function') ? t('characters') : 'chars';
+            const escapedCharsText = escapeHtml(charsText);
+            lengthInfoEl.textContent = newLengthInfo.length + escapedCharsText;
+            lengthInfoEl.className = 'length-info ' + (newLengthInfo.isOptimal ? 'optimal' : 'warning');
             
-            // 편집 패널 숨기기
+            // Hide edit panel
             editPanel.style.display = 'none';
             phraseText.style.display = 'block';
             editBtn.style.display = 'block';
         });
         
-        // 취소 버튼 클릭
+        // Cancel button click
         cancelBtn.addEventListener('click', function() {
             editPanel.style.display = 'none';
             phraseText.style.display = 'block';
@@ -537,7 +905,8 @@ function copyPhrase(phrase) {
         // Show success message
         const btn = event.target;
         const originalText = btn.textContent;
-        btn.textContent = '복사됨!';
+        const copiedText = (typeof t === 'function') ? t('copied') : 'Copied!';
+        btn.textContent = copiedText;
         btn.style.background = '#28a745';
         
         setTimeout(() => {
@@ -545,7 +914,7 @@ function copyPhrase(phrase) {
             btn.style.background = '#6c757d';
         }, 1500);
     }).catch(err => {
-        console.error('복사 실패:', err);
+        console.error('Copy failed:', err);
         // Fallback for older browsers
         const textArea = document.createElement('textarea');
         textArea.value = cleanPhrase;
@@ -555,7 +924,8 @@ function copyPhrase(phrase) {
             document.execCommand('copy');
             const btn = event.target;
             const originalText = btn.textContent;
-            btn.textContent = '복사됨!';
+            const copiedText = (typeof t === 'function') ? t('copied') : 'Copied!';
+            btn.textContent = copiedText;
             btn.style.background = '#28a745';
             
             setTimeout(() => {
@@ -563,7 +933,8 @@ function copyPhrase(phrase) {
                 btn.style.background = '#6c757d';
             }, 1500);
         } catch (fallbackErr) {
-            alert('복사에 실패했습니다. 텍스트를 수동으로 선택해주세요.');
+            const copyErrorMsg = (typeof t === 'function') ? t('copyError') : 'Copy failed. Please select the text manually.';
+            alert(copyErrorMsg);
         }
         document.body.removeChild(textArea);
     });
@@ -573,7 +944,8 @@ function copyPhrase(phrase) {
 function validateStep1() {
     const videoTopic = document.getElementById('videoTopic').value.trim();
     if (!videoTopic) {
-        alert('영상 주제를 입력해주세요.\n예: 50대 이후, 진짜 친구는 몇 명일까?');
+        const errorMsg = (typeof t === 'function') ? t('videoTopicRequired') : 'Please enter the video topic.\nExample: How many true friends do we have after 50?';
+        alert(errorMsg);
         return false;
     }
     return true;
@@ -582,7 +954,8 @@ function validateStep1() {
 function validateStep2() {
     const shockPoint = document.getElementById('shockPoint').value.trim();
     if (!shockPoint) {
-        alert('충격 포인트를 입력해주세요.');
+        const errorMsg = (typeof t === 'function') ? t('shockPointRequired') : 'Please enter the impact point.';
+        alert(errorMsg);
         return false;
     }
     return true;
@@ -604,7 +977,7 @@ function goToStep(step) {
     });
     
     // Show target step
-    document.getElementById(`step${step}`).classList.add('active');
+    document.getElementById('step' + step).classList.add('active');
     
     // Update step indicators
     document.querySelectorAll('.step').forEach((stepEl, index) => {
@@ -614,7 +987,7 @@ function goToStep(step) {
     currentStep = step;
 }
 
-// Simple step navigation without validation for "다음" button
+// Simple step navigation without validation for "Next" button
 function goToNextStep() {
     if (currentStep === 1) {
         goToStep(2);
@@ -623,25 +996,6 @@ function goToNextStep() {
     }
 }
 
-// Initialize the application
-document.addEventListener('DOMContentLoaded', () => {
-    // Set initial step
-    goToStep(1);
-    
-    // Add smooth scrolling
-    document.documentElement.style.scrollBehavior = 'smooth';
-    
-    // Add keyboard navigation
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && currentStep < 3) {
-            if (currentStep === 1 && validateStep1()) {
-                goToStep(2);
-            } else if (currentStep === 2 && validateStep2()) {
-                generatePhrases();
-            }
-        }
-    });
-});
 
 // Add loading states and animations
 function showLoading(element) {
@@ -680,11 +1034,9 @@ function parsePhraseToLines(phrase) {
     return lines;
 }
 
-// 끊어읽기 함수
+// Line break and phrase utility (senior digital adaptation version)
 function smartLineBreak(text) {
-    // 끊어읽기 패턴들 (의미 단위로 분할)
     const breakPatterns = [
-        // 조사 뒤에서 끊기
         /([가을를])\s+/g,
         /([에에서로])\s+/g,
         /([는은])\s+/g,
@@ -693,53 +1045,33 @@ function smartLineBreak(text) {
         /([때문에위해])\s+/g,
         /([라고라고서])\s+/g,
         /([하면하면서])\s+/g,
-        
-        // 구체적인 끊어읽기 패턴
-        /(커피 한 잔)\s+/g,
-        /(당신이 매일)\s+/g,
-        /(암세포를)\s+/g,
-        /(발병률)\s+/g,
-        /(서울대)\s+/g,
-        /(연구팀이)\s+/g,
-        /(독성물질)\s+/g,
-        /(생수병)\s+/g,
-        /(뚜껑)\s+/g,
-        /(절대)\s+/g,
-        /(마시지)\s+/g,
-        /(마세요)\s+/g,
-        /(확인)\s+/g,
-        /(방법)\s+/g,
-        /(공개)\s+/g,
-        /(의사도)\s+/g,
-        /(모르는)\s+/g,
-        /(숨겨진)\s+/g,
-        /(사실)\s+/g,
-        /(중독자)\s+/g,
-        /(사용)\s+/g,
-        /(지금도)\s+/g,
-        /(습관적으로)\s+/g,
-        
-        // 숫자와 단위 뒤에서 끊기
+        /(스마트폰)\s+/g,
+        /(영상통화)\s+/g,
+        /(댓글)\s+/g,
+        /(이모티콘)\s+/g,
+        /(손주)\s+/g,
+        /(사진)\s+/g,
+        /(추억)\s+/g,
+        /(연결)\s+/g,
+        /(배움)\s+/g,
         /(\d+[%배도])\s+/g,
         /(\d+분)\s+/g,
         /(\d+년)\s+/g,
         /(\d+잔)\s+/g,
         /(\d+명)\s+/g
     ];
-    
+
     let result = text;
-    
-    // 패턴 적용하여 끊어읽기 표시
-    breakPatterns.forEach(pattern => {
+
+    breakPatterns.forEach(function(pattern) {
         result = result.replace(pattern, '$1\n');
     });
-    
-    // 줄바꿈으로 분리
-    let lines = result.split('\n').filter(line => line.trim().length > 0);
-    
-    // 3줄로 조정
+
+    let lines = result.split('\n').filter(function(line) {
+        return line.trim().length > 0;
+    });
+
     if (lines.length === 1) {
-        // 여전히 한 줄이면 단어로 분할
         const words = lines[0].split(' ');
         if (words.length <= 6) {
             return [lines[0], '', ''];
@@ -756,43 +1088,35 @@ function smartLineBreak(text) {
     } else if (lines.length >= 3) {
         return lines.slice(0, 3);
     }
-    
+
     return lines;
 }
 
-// 문구 길이 확인 함수
 function checkPhraseLength(phrase) {
     const cleanPhrase = phrase.replace(/\n/g, '').replace(/\s+/g, '');
     const length = cleanPhrase.length;
-    
-    console.log(`문구: "${phrase}"`);
-    console.log(`길이: ${length}자 (공백 제외)`);
-    
-    return {
-        phrase: phrase,
-        length: length,
-        isOptimal: length >= 20 && length <= 35
-    };
+
+    console.log('Phrase: "' + phrase + '"');
+    console.log('Length: ' + length + ' chars (excluding spaces)');
+
+    return { phrase: phrase, length: length, isOptimal: length >= 20 && length <= 35 };
 }
 
-// 키워드 강조 함수
 function highlightKeywords(text) {
-    // 강조할 키워드 패턴들
     const patterns = [
-        // 주황색 강조 (숫자, 통계, 수량, 시간)
-        { pattern: /(\d+[%배]?|10년|3분|1잔|1명|한 명|단 한|수많은|많은|적은|줄어든|늘어난|젊은|나이|들수록)/g, class: 'highlight-orange' },
-        // 빨간색 강조 (위험, 경고, 부정적 표현, 감정)
-        { pattern: /(절대|위험|독|암|발병률|300%|100배|중독|독성|잃어버린|걱정|걱정했다|걱정|위험|독|암)/g, class: 'highlight-red' },
-        // 파란색 강조 (정보, 방법, 질문, 관계)
-        { pattern: /(방법|확인|공개|연구|분석|조건|사실|누가|기억할까|인간관계|친구들|깊이로|시절|지금도)/g, class: 'highlight-blue' }
+        { pattern: /(\d+[%배]?|10년|3분|첫|다시|오늘|처음|둘째|세째|한 번|단 한 번)/g, class: 'highlight-orange' },
+        { pattern: /(울었습니다|변했습니다|달라졌습니다|용기|두려움|외로움)/g, class: 'highlight-red' },
+        { pattern: /(방법|확인|배움|연결|영상통화|댓글|이모티콘|사진|추억|친구|손주|스마트폰)/g, class: 'highlight-blue' }
     ];
-    
+
     let highlightedText = text;
-    
-    patterns.forEach(({ pattern, class: className }) => {
-        highlightedText = highlightedText.replace(pattern, `<span class="${className}">$1</span>`);
+
+    patterns.forEach(function(item) {
+        const pattern = item.pattern;
+        const className = item.class;
+        highlightedText = highlightedText.replace(pattern, '<span class="' + className + '">$1</span>');
     });
-    
+
     return highlightedText;
 }
 

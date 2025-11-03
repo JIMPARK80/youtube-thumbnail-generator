@@ -28,35 +28,35 @@ app.get('/script.js', (req, res) => {
 // Serve other static files
 app.use(express.static('.'));
 
-// 사용량 추적을 위한 Map
+// Map for tracking usage
 const dailyUsage = new Map();
 
-// 비밀번호 설정 (환경변수 또는 기본값)
+// Password setting (environment variable or default value)
 const ACCESS_PASSWORD = process.env.ACCESS_PASSWORD || 'family2024';
 
-// 일일 사용량 제한
+// Daily usage limit
 const DAILY_LIMIT = 100;
 
-// 사용량 초기화 함수 (매일 자정)
+// Usage reset function (daily at midnight)
 function resetDailyUsage() {
     dailyUsage.clear();
-    console.log('📊 일일 사용량이 초기화되었습니다.');
+    console.log('📊 Daily usage has been reset.');
 }
 
-// 매일 자정에 사용량 초기화
+// Reset usage daily at midnight
 setInterval(() => {
     const now = new Date();
     if (now.getHours() === 0 && now.getMinutes() === 0) {
         resetDailyUsage();
     }
-}, 60000); // 1분마다 체크
+}, 60000); // Check every minute
 
-// Claude API 호출 함수
+// Claude API call function
 async function callClaudeAPI(prompt) {
     const API_KEY = process.env.CLAUDE_API_KEY;
     
     if (!API_KEY) {
-        throw new Error('Claude API 키가 설정되지 않았습니다.');
+        throw new Error('Claude API key is not set.');
     }
     
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -80,19 +80,29 @@ async function callClaudeAPI(prompt) {
     
     if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(`Claude API 오류: ${response.status} - ${errorData.error?.message || '알 수 없는 오류'}`);
+        throw new Error(`Claude API error: ${response.status} - ${errorData.error?.message || 'Unknown error'}`);
     }
     
     const data = await response.json();
     const content = data.content[0].text;
     
     // Parse the response to extract phrases
-    const phrases = content.split('\n\n').filter(phrase => phrase.trim().length > 0);
+    let phrases = content.split('\n\n').filter(phrase => phrase.trim().length > 0);
+    
+    // Remove phrase labels like "**Phrase 1:**", "**Phrase 2:**", etc.
+    phrases = phrases.map(phrase => {
+        // Remove markdown bold labels (e.g., "**Phrase 1:**", "**Phrase 2:**")
+        let cleaned = phrase.replace(/^\*\*Phrase\s+\d+:\*\*\s*/gmi, '');
+        // Remove any other variations like "Phrase 1:", "**Phrase 1**", etc.
+        cleaned = cleaned.replace(/^\*\*?Phrase\s+\d+\*\*?:\s*/gmi, '');
+        cleaned = cleaned.replace(/^Phrase\s+\d+:\s*/gmi, '');
+        return cleaned.trim();
+    }).filter(phrase => phrase.length > 0); // Remove empty phrases after cleaning
     
     return phrases;
 }
 
-// 사용량 확인 함수
+// Usage check function
 function checkUsageLimit(clientIP) {
     const today = new Date().toDateString();
     const key = `${clientIP}-${today}`;
@@ -106,7 +116,7 @@ function checkUsageLimit(clientIP) {
     };
 }
 
-// 사용량 증가 함수
+// Usage increment function
 function incrementUsage(clientIP) {
     const today = new Date().toDateString();
     const key = `${clientIP}-${today}`;
@@ -114,41 +124,60 @@ function incrementUsage(clientIP) {
     dailyUsage.set(key, currentUsage + 1);
 }
 
+// Store active session tokens (in production, use Redis or similar)
+const activeTokens = new Set();
+
 // API 엔드포인트
 app.post('/api/generate-phrases', async (req, res) => {
     try {
-        const { prompt, password } = req.body;
+        const { prompt, token, password } = req.body;
         const clientIP = req.ip || req.connection.remoteAddress;
         
-        // 비밀번호 확인
-        if (password !== ACCESS_PASSWORD) {
+        // Verify token or password
+        if (token) {
+            // Token-based authentication (from login)
+            if (!activeTokens.has(token)) {
+                return res.status(401).json({ 
+                    error: 'Invalid or expired session token.',
+                    code: 'INVALID_SESSION'
+                });
+            }
+        } else if (password) {
+            // Password-based authentication (legacy)
+            if (password !== ACCESS_PASSWORD) {
+                return res.status(401).json({ 
+                    error: 'Incorrect password.',
+                    code: 'INVALID_PASSWORD'
+                });
+            }
+        } else {
             return res.status(401).json({ 
-                error: '비밀번호가 올바르지 않습니다.',
-                code: 'INVALID_PASSWORD'
+                error: 'Authentication required. Please provide token or password.',
+                code: 'AUTH_REQUIRED'
             });
         }
         
-        // 사용량 확인
+        // Usage check
         const usage = checkUsageLimit(clientIP);
         if (usage.exceeded) {
             return res.status(429).json({ 
-                error: '일일 사용량을 초과했습니다.',
+                error: 'Daily usage limit exceeded.',
                 code: 'USAGE_EXCEEDED',
                 usage: usage
             });
         }
         
         if (!prompt) {
-            return res.status(400).json({ error: '프롬프트가 필요합니다.' });
+            return res.status(400).json({ error: 'Prompt is required.' });
         }
         
-        console.log(`Claude API 호출 중... (IP: ${clientIP}, 사용량: ${usage.current + 1}/${DAILY_LIMIT})`);
+        console.log(`Calling Claude API... (IP: ${clientIP}, Usage: ${usage.current + 1}/${DAILY_LIMIT})`);
         const phrases = await callClaudeAPI(prompt);
         
-        // 사용량 증가
+        // Increment usage
         incrementUsage(clientIP);
         
-        console.log('생성된 문구:', phrases);
+        console.log('Generated phrases:', phrases);
         
         res.json({ 
             success: true, 
@@ -158,31 +187,72 @@ app.post('/api/generate-phrases', async (req, res) => {
         });
         
     } catch (error) {
-        console.error('API 호출 실패:', error);
+        console.error('API call failed:', error);
         res.status(500).json({ 
-            error: '문구 생성에 실패했습니다.', 
+            error: 'Failed to generate phrases.', 
             details: error.message 
         });
     }
 });
 
-// 사용량 확인 API
+// Login API endpoint
+app.post('/api/login', (req, res) => {
+    try {
+        const { password } = req.body;
+        
+        // Password verification
+        if (password !== ACCESS_PASSWORD) {
+            return res.status(401).json({ 
+                error: 'Incorrect password.',
+                code: 'INVALID_PASSWORD'
+            });
+        }
+        
+        // Generate session token (simple implementation using timestamp and random)
+        const sessionToken = require('crypto').randomBytes(32).toString('hex');
+        
+        // Store token (in production, set expiration)
+        activeTokens.add(sessionToken);
+        
+        // Clean up old tokens periodically (simple cleanup - in production use proper expiration)
+        if (activeTokens.size > 10000) {
+            // Clear half of tokens if too many (simple cleanup)
+            const tokensArray = Array.from(activeTokens);
+            tokensArray.slice(0, tokensArray.length / 2).forEach(token => activeTokens.delete(token));
+        }
+        
+        // Return token
+        res.json({ 
+            success: true,
+            token: sessionToken
+        });
+        
+    } catch (error) {
+        console.error('Login failed:', error);
+        res.status(500).json({ 
+            error: 'Login failed.', 
+            details: error.message 
+        });
+    }
+});
+
+// Usage check API
 app.get('/api/usage', (req, res) => {
     const clientIP = req.ip || req.connection.remoteAddress;
     const usage = checkUsageLimit(clientIP);
     res.json(usage);
 });
 
-// 메인 페이지
+// Main page
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// 서버 시작
+// Start server
 app.listen(PORT, () => {
-    console.log(`🚀 서버가 포트 ${PORT}에서 실행 중입니다.`);
-    console.log(`📱 브라우저에서 http://localhost:${PORT} 를 열어보세요.`);
-    console.log(`🔑 Claude API 키 설정: ${process.env.CLAUDE_API_KEY ? '✅ 설정됨' : '❌ 설정 필요'}`);
+    console.log(`🚀 Server is running on port ${PORT}.`);
+    console.log(`📱 Open http://localhost:${PORT} in your browser.`);
+    console.log(`🔑 Claude API key: ${process.env.CLAUDE_API_KEY ? '✅ Set' : '❌ Not set'}`);
 });
 
 module.exports = app;
