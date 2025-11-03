@@ -73,9 +73,7 @@ function showPasswordModalForFreeLimit() {
         modalTitle.textContent = '🔐 Free Usage Completed';
     }
     if (modalText) {
-        modalText.textContent = `You have used all 3 free generations.
-        Please enter password to continue (100 daily generations for subscribers/friends).`;
-        
+        modalText.textContent = 'You have used all 3 free generations. Please enter password to continue (100 daily generations for subscribers/friends).';
     }
     
     modal.style.display = 'flex';
@@ -173,6 +171,17 @@ function updateUsageDisplay() {
             remainingTextEl.style.borderColor = '#28a745';
         }
     }
+    
+    // Auto-show password modal when free usage is exhausted (remaining = 0)
+    if (usageType === 'free' && usageInfo.remaining === 0 && !sessionToken) {
+        // Only show if not already authenticated and modal is not already visible
+        const passwordModal = document.getElementById('passwordModal');
+        if (passwordModal && passwordModal.style.display !== 'flex') {
+            setTimeout(() => {
+                showPasswordModalForFreeLimit();
+            }, 500); // Small delay to ensure UI is updated first
+        }
+    }
 }
 
 function goToStep(step) {
@@ -207,6 +216,9 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Password input events
     document.getElementById('passwordSubmit').addEventListener('click', checkPassword);
+    
+    // Close modal button
+    document.getElementById('closePasswordModal').addEventListener('click', hidePasswordModal);
     document.getElementById('passwordInput').addEventListener('keypress', function(e) {
         if (e.key === 'Enter') {
             checkPassword();
@@ -380,7 +392,7 @@ async function generatePhrases() {
     }
     
     const generateBtn = document.querySelector('.generate-btn') || document.querySelector('.regenerate-btn');
-    const generateText = (typeof t === 'function') ? t('generate') : 'Generating with AI...';
+    const generateText = (typeof t === 'function') ? t('generate') : 'Next (Generating with AI )';
     if (generateBtn) {
         generateBtn.textContent = generateText;
         generateBtn.classList.add('loading');
@@ -460,7 +472,7 @@ async function generatePhrases() {
     } finally {
         const generateBtn = document.querySelector('.generate-btn') || document.querySelector('.regenerate-btn');
         if (generateBtn) {
-            const generateText = (typeof t === 'function') ? t('generate') : 'Generating with AI...';
+            const generateText = (typeof t === 'function') ? t('generate') : 'Next (Generating with AI )';
             generateBtn.textContent = generateText;
             generateBtn.classList.remove('loading');
             generateBtn.disabled = false;

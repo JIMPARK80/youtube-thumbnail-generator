@@ -136,7 +136,7 @@
 
                     <div class="button-group">
                         <button class="prev-btn" onclick="goToStep(1)">Previous</button>
-                        <button class="generate-btn" onclick="generatePhrases()">Generate with AI...</button>
+                        <button class="generate-btn" onclick="generatePhrases()">Next (Generating with AI )</button>
                     </div>
                 </div>
             </div>
@@ -162,6 +162,7 @@
     <!-- Password input modal -->
     <div id="passwordModal" class="modal">
         <div class="modal-content">
+            <button type="button" id="closePasswordModal" class="modal-close-btn" aria-label="Close modal">×</button>
             <h2>🔐 Access Password</h2>
             <p>This is a private service for family/friends. Please enter the password.</p>
             <div class="password-input-container">
