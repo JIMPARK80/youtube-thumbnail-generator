@@ -170,10 +170,22 @@ function incrementFreeUsage(clientIP) {
 const activeTokens = new Set();
 
 // API 엔드포인트
+// Helper function to get client IP (works with Vercel and other proxies)
+function getClientIP(req) {
+    // Vercel and other proxies use x-forwarded-for header
+    const forwarded = req.headers['x-forwarded-for'];
+    if (forwarded) {
+        // x-forwarded-for can contain multiple IPs, take the first one
+        return forwarded.split(',')[0].trim();
+    }
+    // Fallback to req.ip or connection remote address
+    return req.ip || req.connection?.remoteAddress || req.socket?.remoteAddress || 'unknown';
+}
+
 app.post('/api/generate-phrases', async (req, res) => {
     try {
         const { prompt, token } = req.body;
-        const clientIP = req.ip || req.connection.remoteAddress;
+        const clientIP = getClientIP(req);
         
         if (!prompt) {
             return res.status(400).json({ error: 'Prompt is required.' });
@@ -206,7 +218,7 @@ app.post('/api/generate-phrases', async (req, res) => {
             }
         }
         
-        console.log(`Calling Claude API... (IP: ${clientIP}, Authenticated: ${isAuthenticated}, Usage: ${usage.current + 1}/${usage.limit})`);
+        console.log(`Calling Claude API... (IP: ${clientIP}, Authenticated: ${isAuthenticated}, Usage: ${usage.current + 1}/${usage.limit}, Free Usage Map Size: ${freeUsage.size})`);
         const phrases = await callClaudeAPI(prompt);
         
         // Increment usage based on authentication status
@@ -279,7 +291,7 @@ app.post('/api/login', (req, res) => {
 
 // Usage check API
 app.get('/api/usage', (req, res) => {
-    const clientIP = req.ip || req.connection.remoteAddress;
+    const clientIP = getClientIP(req);
     const token = req.headers['x-session-token'] || req.query.token || '';
     
     let usage;
